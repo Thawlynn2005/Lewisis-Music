@@ -1,0 +1,11 @@
+# CPU-only PyTorch wheels (much smaller than the default CUDA build).
+# If you have an NVIDIA GPU, remove this line to get the CUDA build instead.
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+flask>=3.0
+mutagen>=1.47
+soundfile>=0.12
+numpy
+torch
+torchaudio
+demucs==4.0.1

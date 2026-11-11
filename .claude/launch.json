@@ -1,0 +1,16 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "lewisis-music",
+      "runtimeExecutable": ".venv/bin/python",
+      "runtimeArgs": [
+        "server.py",
+        "--no-browser",
+        "--port",
+        "5055"
+      ],
+      "port": 5055
+    }
+  ]
+}

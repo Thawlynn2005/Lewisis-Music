@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lewisis' Music</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='16' fill='%23dc143c'/%3E%3Cpath d='M12.5 9.5v13l10-6.5z' fill='white'/%3E%3C/svg%3E">
+  <script>
+    // Apply the saved (or system) theme before the page paints.
+    (function () {
+      var theme;
+      try { theme = localStorage.getItem('lewisis-music.theme'); } catch (e) {}
+      if (theme !== 'light' && theme !== 'dark') {
+        theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      }
+      document.documentElement.dataset.theme = theme;
+      try { if (localStorage.getItem('lewisis-music.motion') === 'off') document.documentElement.classList.add('no-motion'); } catch (e) {}
+    })();
+  </script>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="app">
+    <!-- ───────────── Sidebar ───────────── -->
+    <aside class="sidebar" aria-label="Sidebar">
+      <div class="wordmark" aria-label="Lewisis' Music">
+        <span class="wm-script">Lewisis'</span><span class="wm-bold">Music</span>
+      </div>
+
+      <div class="search-wrap">
+        <svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+        <input id="search" type="search" placeholder="Search" aria-label="Search songs" autocomplete="off">
+      </div>
+
+      <nav class="side-nav" aria-label="Library and playlists">
+        <p class="side-label">Library</p>
+        <button class="side-item" type="button" data-view="library">
+          <svg viewBox="0 0 24 24"><path d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3h-6z"/></svg>
+          <span>Songs</span>
+        </button>
+
+        <div class="side-label-row">
+          <p class="side-label">Playlists</p>
+          <button id="newPlaylistBtn" class="side-add" type="button" aria-label="New playlist" title="New playlist">
+            <svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+          </button>
+        </div>
+        <div id="playlistNav"></div>
+        <button id="newPlaylistRow" class="side-item accent" type="button">
+          <svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+          <span>New Playlist</span>
+        </button>
+      </nav>
+
+      <div class="side-foot">
+        <label class="switch side-switch"><input id="motionToggle" type="checkbox"><span class="knob"></span>Animations</label>
+        <div class="segmented" role="group" aria-label="Appearance">
+          <button type="button" data-theme-choice="light" aria-pressed="false">
+            <svg viewBox="0 0 24 24"><path d="M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10zM11 1h2v3h-2zM11 20h2v3h-2zM1 11h3v2H1zM20 11h3v2h-3zM4.2 5.6l1.4-1.4 2.1 2.1-1.4 1.4zM16.3 17.7l1.4-1.4 2.1 2.1-1.4 1.4zM4.2 18.4l2.1-2.1 1.4 1.4-2.1 2.1zM16.3 6.3l2.1-2.1 1.4 1.4-2.1 2.1z"/></svg>
+            Light
+          </button>
+          <button type="button" data-theme-choice="dark" aria-pressed="false">
+            <svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9c0-.46-.04-.92-.1-1.36a5.39 5.39 0 0 1-4.4 2.26 5.4 5.4 0 0 1-3.14-9.8c-.44-.06-.9-.1-1.36-.1z"/></svg>
+            Dark
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <div class="main">
+      <!-- ───────────── Player bar ───────────── -->
+      <header class="playerbar" aria-label="Player">
+        <div class="transport">
+          <button id="shuffleBtn" class="tbtn toggle" type="button" aria-label="Shuffle" aria-pressed="false" title="Shuffle">
+            <svg viewBox="0 0 24 24"><path d="M10.59 9.17 5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg>
+          </button>
+          <button id="prevBtn" class="tbtn" type="button" aria-label="Previous song" title="Previous">
+            <svg viewBox="0 0 24 24"><path d="M11 18V6l-8.5 6 8.5 6zm.5-6 8.5 6V6l-8.5 6z"/></svg>
+          </button>
+          <button id="playBtn" class="tbtn play" type="button" aria-label="Play" title="Play / pause (Space)"></button>
+          <button id="nextBtn" class="tbtn" type="button" aria-label="Next song" title="Next">
+            <svg viewBox="0 0 24 24"><path d="m4 18 8.5-6L4 6v12zm9-12v12l8.5-6L13 6z"/></svg>
+          </button>
+          <button id="loopBtn" class="tbtn toggle" type="button" aria-label="Loop" aria-pressed="false" title="Loop: off"></button>
+        </div>
+
+        <div class="lcd">
+          <div id="cover" class="lcd-art"></div>
+          <div class="lcd-body">
+            <div class="lcd-text">
+              <span id="title" class="lcd-title">Not Playing</span>
+              <span id="modeTag" class="mode-tag" hidden></span>
+            </div>
+            <span id="artist" class="lcd-artist"></span>
+            <div class="seek">
+              <span id="curTime">0:00</span>
+              <input id="seek" type="range" min="0" max="100" step="0.1" value="0" aria-label="Seek" disabled>
+              <span id="durTime">0:00</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="volume">
+          <button id="muteBtn" class="tbtn small" type="button" aria-label="Mute"></button>
+          <input id="volume" type="range" min="0" max="100" step="1" value="80" aria-label="Volume">
+        </div>
+      </header>
+
+      <!-- ───────────── Songs / playlist ───────────── -->
+      <section id="content" class="content" aria-label="Songs">
+        <div class="view-head">
+          <div id="viewArt" class="view-art" hidden></div>
+          <div class="view-info">
+            <p id="viewKind" class="view-kind">Library</p>
+            <h1 id="viewTitle">Songs</h1>
+            <p id="viewSub" class="view-sub"></p>
+            <div class="view-actions">
+              <button id="playAllBtn" class="btn primary" type="button">
+                <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>Play
+              </button>
+              <button id="shuffleAllBtn" class="btn primary" type="button">
+                <svg viewBox="0 0 24 24"><path d="M10.59 9.17 5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg>Shuffle
+              </button>
+              <button id="addMusicBtn" class="btn" type="button">
+                <svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>Add Music
+              </button>
+              <button id="editPlaylistBtn" class="btn" type="button" hidden>
+                <svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>Add or Edit Songs
+              </button>
+              <button id="deletePlaylistBtn" class="btn quiet" type="button" hidden>Delete Playlist</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="tableHead" class="table-head" aria-hidden="true">
+          <span>#</span><span>Title</span><span class="c-artist">Artist</span><span class="c-album">Album</span><span class="c-time">Time</span><span></span>
+        </div>
+        <ul id="trackList" class="track-list"></ul>
+
+        <div id="emptyLibrary" class="empty" hidden>
+          <p class="empty-title">Your library is empty</p>
+          <p>Drop MP3, WAV or FLAC files anywhere in this window, or press <b>Add Music</b>.</p>
+        </div>
+        <div id="emptyPlaylist" class="empty" hidden>
+          <p class="empty-title">This playlist is empty</p>
+          <p>Press <b>Add or Edit Songs</b> to choose songs from your library.</p>
+        </div>
+        <p id="noResults" class="empty" hidden>No songs match your search.</p>
+      </section>
+
+      <!-- ───────────── Sound controls ───────────── -->
+      <footer class="sound" aria-label="Sound controls">
+        <div class="control">
+          <div class="control-head">
+            <span class="label">Speed</span>
+            <span id="speedVal" class="val">1.00×</span>
+          </div>
+          <input id="speed" type="range" min="50" max="200" step="1" value="100" aria-label="Playback speed">
+          <div class="pills">
+            <button class="pill" type="button" data-speed="85">Slowed</button>
+            <button class="pill" type="button" data-speed="100">Normal</button>
+            <button class="pill" type="button" data-speed="125">Nightcore</button>
+            <label class="switch" title="Off: pitch follows speed (classic nightcore / slowed sound). On: only the tempo changes.">
+              <input id="keepPitch" type="checkbox"><span class="knob"></span>Keep pitch
+            </label>
+          </div>
+        </div>
+
+        <div class="control">
+          <div class="control-head">
+            <span class="label">Reverb</span>
+            <span id="reverbVal" class="val">0%</span>
+          </div>
+          <input id="reverb" type="range" min="0" max="100" step="1" value="0" aria-label="Reverb amount">
+          <div id="reverbTypes" class="pills" role="radiogroup" aria-label="Reverb type"></div>
+        </div>
+
+        <div class="control">
+          <div class="control-head">
+            <span class="label">Vocals &amp; music</span>
+            <label class="switch" title="Splits every song in your library ahead of time, so Acapella and Karaoke switch on instantly. Uses the processor in the background and about 40 MB of disk per song.">
+              <input id="autoPrepare" type="checkbox"><span class="knob"></span><span id="prepLabel">Prepare ahead</span>
+            </label>
+          </div>
+          <div class="stem-buttons">
+            <button id="acapellaBtn" class="stem-btn" type="button" aria-pressed="false" data-mode="vocals">
+              <svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z"/></svg>
+              <span><b>Acapella</b><small>Vocals only</small></span>
+            </button>
+            <button id="karaokeBtn" class="stem-btn" type="button" aria-pressed="false" data-mode="instrumental">
+              <svg viewBox="0 0 24 24"><path d="M21 3 9 5.5v9.05A3.5 3.5 0 1 0 11 17.5V9.6l8-1.67v5.12A3.5 3.5 0 1 0 21 16.5V3z"/></svg>
+              <span><b>Karaoke</b><small>Instrumental only</small></span>
+            </button>
+          </div>
+          <div class="stem-status">
+            <div id="stemBar" class="bar" hidden><span></span></div>
+            <p id="stemText"></p>
+          </div>
+        </div>
+      </footer>
+    </div>
+  </div>
+
+  <!-- ───────────── Playlist editor ───────────── -->
+  <dialog id="playlistDialog" class="dialog" aria-labelledby="dlgTitle">
+    <form id="playlistForm" method="dialog">
+      <h2 id="dlgTitle">New Playlist</h2>
+      <input id="dlgName" class="field" type="text" maxlength="80" placeholder="Playlist name" aria-label="Playlist name" autocomplete="off">
+      <div class="dlg-pick-head">
+        <span>Choose songs from your library</span>
+        <input id="dlgFilter" class="field small" type="search" placeholder="Filter" aria-label="Filter songs" autocomplete="off">
+      </div>
+      <ul id="dlgSongs" class="dlg-songs"></ul>
+      <p id="dlgEmpty" class="dlg-empty" hidden>Your library is empty. Add some music first, then put it in playlists.</p>
+      <div class="dlg-foot">
+        <span id="dlgCount">0 songs selected</span>
+        <button id="dlgCancel" class="btn" type="button">Cancel</button>
+        <button id="dlgSave" class="btn primary" type="submit">Create</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="menu" class="menu" role="menu" hidden></div>
+  <input id="fileInput" type="file" multiple hidden accept=".mp3,.wav,.flac,audio/mpeg,audio/wav,audio/x-wav,audio/flac">
+  <div id="dropOverlay" class="drop-overlay" hidden><div class="drop-card">Drop to add to your library</div></div>
+  <div id="toasts" class="toasts" role="status" aria-live="polite"></div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

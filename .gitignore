@@ -1,0 +1,25 @@
+node_modules
+dist
+.env
+*.local
+
+# User uploads
+public/media/uploads/**
+!public/media/uploads/.gitkeep
+
+# SQLite
+prisma/dev.db
+prisma/dev.db-journal
+prisma/*.db
+prisma/*.db-journal
+
+# Logs / editor
+*.log
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+
+# Lewisis' Music
+.venv/
+__pycache__/
+data/
