@@ -128,7 +128,9 @@ fn separation_model(app: State<'_, App>) -> Option<PathBuf> {
 async fn install_model(path: PathBuf, app: State<'_, App>) -> Result<PathBuf, ApiError> {
     let backend = app.backend.clone();
     blocking(move || {
-        lewisis_core::separate::Separator::load(&path).map_err(|e| ApiError::new(400, format!("That isn't a model Lewisis' Music can use: {e}")))?;
+        let runtime = backend.runtime().ok_or_else(|| ApiError::new(503, "This installation is missing ONNX Runtime, so the model can't be checked. Reinstall Lewisis' Music."))?;
+        lewisis_core::separate::Separator::load(&path, &runtime)
+            .map_err(|e| ApiError::new(400, format!("That isn't a model Lewisis' Music can use: {e}")))?;
         let target = backend.model_install_path();
         if let Some(folder) = target.parent() {
             std::fs::create_dir_all(folder).map_err(|e| ApiError::new(500, e.to_string()))?;
@@ -151,6 +153,7 @@ fn app_info(app: State<'_, App>, handle: AppHandle) -> Value {
         "data": app.backend.store.root(),
         "logs": handle.path().app_log_dir().ok(),
         "model": app.backend.model(),
+        "onnxRuntime": app.backend.runtime(),
     })
 }
 
@@ -338,6 +341,10 @@ pub fn run() {
             match backend.model() {
                 Some(model) => log::info!("Separation model: {}", model.display()),
                 None => log::info!("No separation model installed; Separate Audio will ask for one."),
+            }
+            match backend.runtime() {
+                Some(runtime) => log::info!("ONNX Runtime: {}", runtime.display()),
+                None => log::warn!("ONNX Runtime library not found; AI separation is unavailable."),
             }
             let prepare = backend.clone();
             std::thread::spawn(move || prepare.prepare_in_background(None));

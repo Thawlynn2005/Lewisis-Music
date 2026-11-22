@@ -10,7 +10,11 @@ description = "Library, playlists, song info and lyrics for Lewisis' Music"
 flacenc = "0.5.1"
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "gif", "webp", "bmp", "tiff", "ico"] }
 lofty = "0.25.5"
-ort = "=2.0.0-rc.15"
+# ONNX Runtime is loaded at run time from a library shipped with the app
+# (Microsoft's own build, see tools/fetch_onnxruntime.py) instead of being
+# linked in: the statically linked build needs glibc 2.38 / GCC 13, which
+# older Linux systems (and the Ubuntu 22.04 build machine) don't have.
+ort = { version = "=2.0.0-rc.15", default-features = false, features = ["std", "load-dynamic", "api-31"] }
 regex = "1.13.2"
 rubato = "5.1.0"
 serde = { version = "1.0.229", features = ["derive"] }

@@ -55,11 +55,35 @@ pub fn model_candidates(data_dir: &Path, resource_dir: Option<&Path>) -> Vec<Pat
         candidates.push(PathBuf::from(path));
     }
     candidates.push(data_dir.join("models").join(MODEL_FILE));
-    if let Some(resources) = resource_dir {
-        candidates.push(resources.join("resources").join(MODEL_FILE));
-        candidates.push(resources.join(MODEL_FILE));
+    candidates.extend(bundled(resource_dir, MODEL_FILE));
+    candidates
+}
+
+/// Where the ONNX Runtime library that runs the model can be found: shipped
+/// in the app's resources (see `tools/fetch_onnxruntime.py`), or named by
+/// `LEWISIS_MUSIC_ORT` / `ORT_DYLIB_PATH`.
+pub fn runtime_candidates(resource_dir: Option<&Path>) -> Vec<PathBuf> {
+    let mut candidates: Vec<PathBuf> =
+        ["LEWISIS_MUSIC_ORT", "ORT_DYLIB_PATH"].iter().filter_map(std::env::var_os).map(PathBuf::from).collect();
+    candidates.extend(bundled(resource_dir, separate::RUNTIME_LIBRARY));
+    if let Some(folder) = std::env::current_exe().ok().and_then(|exe| exe.parent().map(Path::to_path_buf)) {
+        candidates.push(folder.join(separate::RUNTIME_LIBRARY));
     }
     candidates
+}
+
+/// A file shipped in the app's `resources/` folder (and, when developing,
+/// the same folder in the source tree).
+fn bundled(resource_dir: Option<&Path>, name: &str) -> Vec<PathBuf> {
+    let mut places = Vec::new();
+    if let Some(resources) = resource_dir {
+        places.push(resources.join("resources").join(name));
+        places.push(resources.join(name));
+    }
+    if cfg!(debug_assertions) {
+        places.push(Path::new(env!("CARGO_MANIFEST_DIR")).join("resources").join(name));
+    }
+    places
 }
 
 pub const MODEL_FILE: &str = "htdemucs.onnx";
@@ -69,30 +93,37 @@ pub struct Backend {
     pub lyrics: LyricsStore,
     pub queue: Queue,
     model_candidates: Vec<PathBuf>,
+    runtime_candidates: Vec<PathBuf>,
 }
 
 impl Backend {
     pub fn open(data_dir: &Path, resource_dir: Option<&Path>) -> Result<Arc<Self>, CoreError> {
+        Self::open_with(data_dir, model_candidates(data_dir, resource_dir), runtime_candidates(resource_dir))
+    }
+
+    /// Like [`open`](Self::open), with the places to look for the model and
+    /// for ONNX Runtime given explicitly.
+    pub fn open_with(data_dir: &Path, candidates: Vec<PathBuf>, runtimes: Vec<PathBuf>) -> Result<Arc<Self>, CoreError> {
         let store = Store::open(data_dir)?;
         let lyrics = LyricsStore::new(store.lyrics_dir())?;
-        let candidates = model_candidates(data_dir, resource_dir);
 
         // The model is loaded the first time a song is separated, then kept.
         let loaded: Arc<Mutex<Option<Separator>>> = Arc::default();
-        let finder = candidates.clone();
+        let (finder, runtime_finder) = (candidates.clone(), runtimes.clone());
         let runner: Arc<lewisis_core::queue::Runner> = Arc::new(move |song, out_dir, stage, progress| {
             let mut slot = loaded.lock().unwrap_or_else(|p| p.into_inner());
             if slot.is_none() {
                 let model = find_model(&finder)
                     .ok_or_else(|| CoreError::invalid("The separation model is not installed."))?;
-                log::info!("Loading the separation model from {}", model.display());
-                *slot = Some(Separator::load(&model)?);
+                let runtime = find_model(&runtime_finder).ok_or_else(|| CoreError::invalid(RUNTIME_MISSING))?;
+                log::info!("Loading the separation model from {} with {}", model.display(), runtime.display());
+                *slot = Some(Separator::load(&model, &runtime)?);
             }
             let separator = slot.as_mut().unwrap();
             separate::separate_file(separator, song, out_dir, |s| stage(s), &mut *progress)
         });
         let queue = Queue::new(store.stems_dir(), runner);
-        let backend = Arc::new(Self { store, lyrics, queue, model_candidates: candidates });
+        let backend = Arc::new(Self { store, lyrics, queue, model_candidates: candidates, runtime_candidates: runtimes });
         if let Err(error) = backend.store.fill_in_genres() {
             log::warn!("Could not fill in genres: {error}");
         }
@@ -101,6 +132,11 @@ impl Backend {
 
     pub fn model(&self) -> Option<PathBuf> {
         find_model(&self.model_candidates)
+    }
+
+    /// The ONNX Runtime library, if this installation has one.
+    pub fn runtime(&self) -> Option<PathBuf> {
+        find_model(&self.runtime_candidates)
     }
 
     /// Where an installed model goes (the app's own data folder).
@@ -116,7 +152,7 @@ impl Backend {
     /// Queue songs to be separated ahead of time, if that setting is on.
     pub fn prepare_in_background(&self, tracks: Option<Vec<Track>>) {
         let Ok(settings) = self.store.settings() else { return };
-        if !settings.auto_prepare || self.model().is_none() {
+        if !settings.auto_prepare || self.model().is_none() || self.runtime().is_none() {
             return;
         }
         let tracks = match tracks {
@@ -184,6 +220,11 @@ impl Backend {
             }
             ("POST", ["api", "tracks", id, "separate"]) => {
                 let track = self.store.track(id)?;
+                if self.runtime().is_none() {
+                    let mut error = ApiError::new(503, RUNTIME_MISSING);
+                    error.extra.insert("state".into(), json!("error"));
+                    return Err(error);
+                }
                 if self.model().is_none() {
                     let mut error = ApiError::new(
                         503,
@@ -333,6 +374,8 @@ impl Backend {
     }
 }
 
+const RUNTIME_MISSING: &str = "AI separation can't run: this installation is missing ONNX Runtime. Reinstall Lewisis' Music to restore it.";
+
 fn find_model(candidates: &[PathBuf]) -> Option<PathBuf> {
     candidates.iter().find(|p| p.is_file()).cloned()
 }
@@ -366,9 +409,12 @@ fn clean_edit(mut body: Value) -> Value {
 mod tests {
     use super::*;
 
+    /// A backend whose model and ONNX Runtime are looked for only in the
+    /// test's own folder (so files on the developer's machine don't count).
     fn backend() -> (tempfile::TempDir, Arc<Backend>) {
         let dir = tempfile::tempdir().unwrap();
-        let backend = Backend::open(dir.path(), None).unwrap();
+        let (model, runtime) = (dir.path().join("model.onnx"), dir.path().join(separate::RUNTIME_LIBRARY));
+        let backend = Backend::open_with(dir.path(), vec![model], vec![runtime]).unwrap();
         (dir, backend)
     }
 
@@ -400,6 +446,13 @@ mod tests {
         let removed = api.route("DELETE", &format!("/api/tracks/{id}/lyrics"), None).unwrap();
         assert_eq!(removed["removed"], true);
 
+        // No ONNX Runtime: separation can't run, and installing a model wouldn't help.
+        let no_runtime = api.route("POST", &format!("/api/tracks/{id}/separate"), None).unwrap_err();
+        assert_eq!(no_runtime.status, 503);
+        assert!(no_runtime.error.contains("ONNX Runtime"), "{}", no_runtime.error);
+        assert!(!no_runtime.extra.contains_key("needsModel"));
+        // ONNX Runtime present but no model: the interface offers to install one.
+        std::fs::write(dir.path().join(separate::RUNTIME_LIBRARY), b"stand-in").unwrap();
         let missing = api.route("POST", &format!("/api/tracks/{id}/separate"), None).unwrap_err();
         assert_eq!(missing.status, 503);
         assert_eq!(missing.extra["needsModel"], true);

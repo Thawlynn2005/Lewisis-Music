@@ -31,3 +31,6 @@ data/
 desktop/target/
 desktop/app/gen/
 desktop/app/resources/*.onnx
+desktop/app/resources/*.so
+desktop/app/resources/*.dll
+desktop/app/resources/*.dylib

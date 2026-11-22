@@ -48,7 +48,7 @@ Runtime needs: on Linux, WebKitGTK 4.1 and ALSA (`libwebkit2gtk-4.1-0`, `libasou
 
 To bring everything over from the web version (songs, covers, playlists, lyrics, separated stems), quit the app and copy the *contents* of `data/` into that folder. To add just the songs, use *Settings › Migrate*. To use another folder altogether, start the app with `LEWISIS_MUSIC_DATA=/path/to/folder`. Logs go to `~/.local/share/com.lewisis.music/logs/` on Linux, `%LOCALAPPDATA%\com.lewisis.music\logs\` on Windows, and `~/Library/Logs/com.lewisis.music/` on macOS.
 
-**AI separation** (Acapella, Karaoke, Separate Audio) runs the same Demucs model through ONNX Runtime, built into the app. Installers made by the workflow include the model (about 160 MB). In a build without it, the app asks for the model file (`htdemucs.onnx`) the first time it's needed and keeps a copy in its data folder.
+**AI separation** (Acapella, Karaoke, Separate Audio) runs the same Demucs model through ONNX Runtime. Installers made by the workflow include the model (about 160 MB) and Microsoft's ONNX Runtime 1.31 library for that system, which the app loads when it first separates a song. In a build without it, the app asks for the model file (`htdemucs.onnx`) the first time it's needed and keeps a copy in its data folder.
 
 **Differences from the web version.** Repeating a song or an A–B part is gapless. HEIC photos can be used as covers on macOS only (on Windows and Linux, convert them to JPEG first). Media keys and headphone buttons aren't connected yet.
 
@@ -74,10 +74,27 @@ Run it in development (the interface is served straight from `static/`; reload t
 cd desktop/app && cargo tauri dev
 ```
 
-Run the tests:
+AI separation needs two files in `desktop/app/resources/` (neither is kept in git): ONNX Runtime, which this downloads from Microsoft's NuGet package and checks against a pinned checksum,
+
+```bash
+python3 desktop/tools/fetch_onnxruntime.py
+```
+
+and the model, made from the Demucs weights (this needs the web version's `.venv`, which has PyTorch and Demucs):
+
+```bash
+.venv/bin/pip install onnx onnxruntime
+.venv/bin/python desktop/tools/export_demucs_onnx.py desktop/app/resources/htdemucs.onnx --fp16
+```
+
+Run the tests (the separation test also runs the model when given both files):
 
 ```bash
 cd desktop && cargo test --workspace
+```
+
+```bash
+cd desktop && LEWISIS_TEST_MODEL=$PWD/app/resources/htdemucs.onnx ORT_DYLIB_PATH=$PWD/app/resources/libonnxruntime.so cargo test --workspace
 ```
 
 ### Build the Linux installers
@@ -86,12 +103,7 @@ cd desktop && cargo test --workspace
 cd desktop/app && NO_STRIP=true cargo tauri build --bundles deb,appimage
 ```
 
-The `.deb` and `.AppImage` appear in `desktop/target/release/bundle/deb/` and `desktop/target/release/bundle/appimage/`. To bundle the separation model, first make it (this needs the web version's `.venv`, which has PyTorch and Demucs):
-
-```bash
-.venv/bin/pip install onnx onnxruntime
-.venv/bin/python desktop/tools/export_demucs_onnx.py desktop/app/resources/htdemucs.onnx --fp16
-```
+The `.deb` and `.AppImage` appear in `desktop/target/release/bundle/deb/` and `desktop/target/release/bundle/appimage/`. Whatever is in `desktop/app/resources/` is bundled, so fetch ONNX Runtime and make the model first (see above) for AI separation to work in the installed app.
 
 ### Build for Windows and macOS
 

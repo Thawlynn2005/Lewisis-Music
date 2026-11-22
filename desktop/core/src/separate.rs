@@ -29,6 +29,16 @@ fn model_error(e: impl std::fmt::Display) -> Error {
     Error::invalid(format!("The separation model failed: {e}"))
 }
 
+/// The ONNX Runtime library's file name on this system. The app ships
+/// Microsoft's build of ONNX Runtime 1.31 and loads it at run time.
+pub const RUNTIME_LIBRARY: &str = if cfg!(target_os = "windows") {
+    "onnxruntime.dll"
+} else if cfg!(target_os = "macos") {
+    "libonnxruntime.dylib"
+} else {
+    "libonnxruntime.so"
+};
+
 /// The two halves of a song.
 pub struct Stems {
     pub vocals: Stereo,
@@ -42,9 +52,17 @@ pub struct Separator {
 }
 
 impl Separator {
-    pub fn load(model: &Path) -> Result<Self> {
+    /// Load ONNX Runtime from `runtime` (its library file, see
+    /// [`RUNTIME_LIBRARY`]) and the model from `model`. The runtime is loaded
+    /// once per process; later calls reuse it.
+    pub fn load(model: &Path, runtime: &Path) -> Result<Self> {
         let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
-        let environment = ort::init().with_name("lewisis-music").build().map_err(model_error)?;
+        // `init_from` must come before any other ONNX Runtime call: it loads the library.
+        let environment = ort::init_from(runtime)
+            .map_err(|e| Error::invalid(format!("Could not load ONNX Runtime from {}: {e}", runtime.display())))?
+            .with_name("lewisis-music")
+            .build()
+            .map_err(model_error)?;
         let session = Session::builder(&environment)
             .map_err(model_error)?
             .with_optimization_level(GraphOptimizationLevel::Level3)
