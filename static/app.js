@@ -9,6 +9,9 @@
 (() => {
      "use strict";
 
+     // The desktop app's bridge (desktop.js); null in a normal browser.
+     const desktop = window.LewisisDesktop || null;
+
      const $ = selector => document.querySelector(selector);
      const ICON = {
           play: '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>',
@@ -22,11 +25,12 @@
           edit: '<svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>',
           more: '<svg viewBox="0 0 24 24"><path d="M6 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm12 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm-6 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></svg>',
           check: '<svg viewBox="0 0 24 24"><path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>',
+          close: '<svg viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>',
           camera: '<svg viewBox="0 0 24 24"><path d="M9 3 7.17 5H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-3.17L15 3H9zm3 15a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-2.2a2.8 2.8 0 1 0 0-5.6 2.8 2.8 0 0 0 0 5.6z"/></svg>',
           playlist:
                '<svg viewBox="0 0 24 24"><path d="M15 6H3v2h12V6zm0 4H3v2h12v-2zM3 16h8v-2H3v2zM17 6v8.18c-.31-.11-.65-.18-1-.18a3 3 0 1 0 3 3V8h3V6h-5z"/></svg>',
      };
-     const MODE_LABEL = { vocals: "Acapella", instrumental: "Karaoke" };
+     const MODE_LABEL = { vocals: "Acapella", instrumental: "Karaoke", mix: "Separated" };
      const SETTINGS_KEY = "lewisis-music.settings";
      const THEME_KEY = "lewisis-music.theme";
      const MOTION_KEY = "lewisis-music.motion";
@@ -34,6 +38,9 @@
      const ACCENT_KEY = "lewisis-music.accent";
      const SIDEBAR_KEY = "lewisis-music.sidebar";
      const AUTO_LYRICS_KEY = "lewisis-music.autoLyrics";
+     const SHOW_LYRICS_KEY = "lewisis-music.showLyrics";
+     const NP_BAR_KEY = "lewisis-music.npBar";
+     const NP_SOUND_KEY = "lewisis-music.npSound";
 
      // Settings › Customization: "Theme" is the UI style, "Colour" the accent. The ids match [data-ui] / [data-accent] in the stylesheets.
      const UI_STYLES = [
@@ -90,6 +97,22 @@
      // rings (seconds), how fast it dies away (decay), the gap before it starts
      // (preDelay), how dull the tail gets (damping, start → end), how many early
      // wall reflections there are, and optionally a metallic ring (flutter).
+     // A song's mood ("Type"), chosen by the listener in Edit Song Info.
+     const TYPES = [
+          { id: "happy", label: "Happy", color: "#e8a400" },
+          { id: "sad", label: "Sad", color: "#3b82f6" },
+          { id: "quiet", label: "Quiet", color: "#8b7cf6" },
+          { id: "energetic", label: "Energetic", color: "#f0532d" },
+     ];
+     const typeById = id => TYPES.find(t => t.id === id);
+     // Offered while typing genres; any other genre can be typed in too.
+     const GENRE_SUGGESTIONS = [
+          "Pop", "Rock", "Rap", "Hip-Hop", "R&B", "Indie", "Alternative", "Electronic",
+          "EDM", "House", "Future House", "Progressive House", "Deep House", "Techno",
+          "Trance", "Dubstep", "Drum & Bass", "Lo-fi", "Jazz", "Classical", "Soul",
+          "Country", "Folk", "Metal", "K-Pop", "Latin", "Reggaeton", "Acoustic",
+     ];
+
      const REVERBS = {
           room: {
                label: "Room",
@@ -181,6 +204,27 @@
           emptyLibrary: $("#emptyLibrary"),
           emptyPlaylist: $("#emptyPlaylist"),
           noResults: $("#noResults"),
+          hotkeyList: $("#hotkeyList"),
+          hkResetAll: $("#hkResetAll"),
+          hud: $("#hud"),
+          folderInput: $("#folderInput"),
+          migChoose: $("#migChoose"),
+          migCard: $("#migCard"),
+          migIcon: $("#migIcon"),
+          migFolder: $("#migFolder"),
+          migSummary: $("#migSummary"),
+          migBar: $("#migBar"),
+          migNow: $("#migNow"),
+          migIssues: $("#migIssues"),
+          migStart: $("#migStart"),
+          migStop: $("#migStop"),
+          migShow: $("#migShow"),
+          noResultsText: $("#noResultsText"),
+          noResultsClear: $("#noResultsClear"),
+          filterBar: $("#filterBar"),
+          filterClear: $("#filterClear"),
+          filterCount: $("#filterCount"),
+          filterChips: [...document.querySelectorAll(".filter-chip")],
           viewArt: $("#viewArt"),
           viewKind: $("#viewKind"),
           viewTitle: $("#viewTitle"),
@@ -199,6 +243,10 @@
           artist: $("#artist"),
           modeTag: $("#modeTag"),
           seek: $("#seek"),
+          seekTrack: $(".seek-track"),
+          loopRange: $("#loopRange"),
+          loopA: $("#loopA"),
+          loopB: $("#loopB"),
           cur: $("#curTime"),
           dur: $("#durTime"),
           play: $("#playBtn"),
@@ -207,6 +255,9 @@
           shuffle: $("#shuffleBtn"),
           loop: $("#loopBtn"),
           mute: $("#muteBtn"),
+          mixVocals: $("#mixVocals"),
+          mixMusic: $("#mixMusic"),
+          mixer: $("#mixer"),
           volume: $("#volume"),
           speed: $("#speed"),
           speedVal: $("#speedVal"),
@@ -249,6 +300,11 @@
           trkName: $("#trkName"),
           trkArtist: $("#trkArtist"),
           trkAlbum: $("#trkAlbum"),
+          trkType: $("#trkType"),
+          trkGenres: $("#trkGenres"),
+          trkGenreChips: $("#trkGenreChips"),
+          trkGenreInput: $("#trkGenreInput"),
+          trkGenreSuggest: $("#trkGenreSuggest"),
           trkSave: $("#trkSave"),
           trkCancel: $("#trkCancel"),
           imageInput: $("#imageInput"),
@@ -272,6 +328,11 @@
           lyCancel: $("#lyCancel"),
           lrcInput: $("#lrcInput"),
           autoLyrics: $("#autoLyrics"),
+          npBarRow: $("#npBarRow"),
+          npSoundRow: $("#npSoundRow"),
+          npTray: $("#npTray"),
+          foldBar: $("#foldBar"),
+          foldSound: $("#foldSound"),
      };
      const root = document.documentElement;
      const motionOn = () => !root.classList.contains("no-motion");
@@ -306,6 +367,9 @@
           filter: "",
           loaded: false, // false until the library has arrived (skeletons show meanwhile)
           pendingUploads: 0, // songs being added right now (shown as skeleton rows)
+          // Filters on the song list: type ("" any, "none" not set), genres
+          // (lower-case, any of them) and one artist (lower-case).
+          filters: { type: "", genres: [], artist: "" },
           autoPrepare: true,
           shuffle: !!saved.shuffle,
           loop: ["off", "all", "one"].includes(saved.loop) ? saved.loop : "off",
@@ -315,9 +379,16 @@
           keepPitch: !!saved.keepPitch,
           reverb: clamp(saved.reverb ?? 0, 0, 100),
           reverbType: REVERBS[saved.reverbType] ? saved.reverbType : "hall",
+          mixVocals: clamp(saved.mixVocals ?? 100, 0, 100), // Separate Audio: vocals volume
+          mixMusic: clamp(saved.mixMusic ?? 100, 0, 100), // Separate Audio: instruments volume
      };
 
-     const audio = new Audio();
+     const audio = desktop ? desktop.audio : new Audio();
+     // Separate Audio plays two files at once: `audio` the vocals and `follower`
+     // the instruments. The follower copies everything `audio` does (play,
+     // pause, seek, speed) and is nudged back whenever the two drift apart.
+     const follower = desktop ? desktop.follower : new Audio();
+     follower.preload = "auto";
      audio.preload = "auto";
      let justAdded = new Set(); // ids of rows that should animate in on the next render
      let newPlaylistId = null; // sidebar item that should animate in
@@ -359,9 +430,13 @@
      }
      // The version changes whenever the picture does, so the browser fetches the new one.
      const coverUrl = track =>
-          `/api/tracks/${track.id}/cover?v=${track.coverVersion || 0}`;
+          desktop
+               ? desktop.coverUrl("track", track.id, track.coverVersion)
+               : `/api/tracks/${track.id}/cover?v=${track.coverVersion || 0}`;
      const playlistCoverUrl = playlist =>
-          `/api/playlists/${playlist.id}/cover?v=${playlist.coverVersion || 0}`;
+          desktop
+               ? desktop.coverUrl("playlist", playlist.id, playlist.coverVersion)
+               : `/api/playlists/${playlist.id}/cover?v=${playlist.coverVersion || 0}`;
      const loadedArt = new Set();
      function paintArt(node, track) {
           const hasArt = !!(track && track.hasCover);
@@ -406,6 +481,7 @@
                '<span class="sk sk-num"></span>' +
                '<div class="t-main"><div class="sk sk-thumb"></div><div class="sk sk-line sk-title"></div></div>' +
                '<span class="sk sk-line sk-artist t-artist"></span><span class="sk sk-line sk-album t-album"></span>' +
+               '<span class="sk sk-line sk-type t-type"></span><span class="sk sk-line sk-genres t-genres"></span>' +
                '<span class="sk sk-line sk-time"></span><span></span>';
           return row;
      }
@@ -425,6 +501,8 @@
                keepPitch,
                reverb,
                reverbType,
+               mixVocals,
+               mixMusic,
           } = state;
           try {
                localStorage.setItem(
@@ -437,6 +515,8 @@
                          keepPitch,
                          reverb,
                          reverbType,
+                         mixVocals,
+                         mixMusic,
                     }),
                );
           } catch {
@@ -457,7 +537,7 @@
           );
      }
      async function api(path, options) {
-          const response = await fetch(path, options);
+          const response = await (desktop ? desktop.fetch : fetch)(path, options);
           const data = await response.json().catch(() => ({}));
           if (!response.ok && !data.error)
                data.error = `Request failed (${response.status})`;
@@ -475,6 +555,30 @@
      const playlistById = id => state.playlists.find(p => p.id === id);
      const currentTrack = () => trackById(state.current);
      const audioUrl = (id, stem) => `/api/tracks/${id}/audio?stem=${stem}`;
+     // "A, B feat. C" → ["A", "B", "C"], so each artist can be picked on their own.
+     function artistsOf(track) {
+          return (track.artist || "")
+               .split(/\s*(?:,|;|\/|\bfeat\.?|\bft\.?|\bfeaturing)\s*/i)
+               .map(name => name.trim())
+               .filter(Boolean);
+     }
+     const filtersOn = () =>
+          !!(state.filters.type || state.filters.genres.length || state.filters.artist);
+     function matchesFilters(track) {
+          const { type, genres, artist } = state.filters;
+          if (type === "none" ? track.type : type && track.type !== type) return false;
+          if (
+               genres.length &&
+               !(track.genres || []).some(g => genres.includes(g.toLowerCase()))
+          )
+               return false;
+          if (artist && !artistsOf(track).some(a => a.toLowerCase() === artist))
+               return false;
+          return true;
+     }
+     // The songs of a view that pass the filters: what Play and the queue use.
+     const filteredTracks = (view = state.view) => viewTracks(view).filter(matchesFilters);
+
      function viewTracks(view = state.view) {
           if (view === "library") return state.tracks;
           const playlist = playlistById(view);
@@ -865,20 +969,45 @@
           return buffer;
      }
 
+     let vocalsGain, musicGain;
      function ensureGraph() {
-          if (ctx) return;
+          if (ctx || desktop) return; // the desktop app plays through its own engine
           ctx = new (window.AudioContext || window.webkitAudioContext)();
-          const source = ctx.createMediaElementSource(audio);
+          // audio ─► vocalsGain ─┐
+          // follower ─► musicGain ─┴► mix ─► dry / reverb ─► master
+          const mix = ctx.createGain();
+          vocalsGain = ctx.createGain();
+          musicGain = ctx.createGain();
+          ctx.createMediaElementSource(audio).connect(vocalsGain).connect(mix);
+          ctx.createMediaElementSource(follower).connect(musicGain).connect(mix);
           convolver = ctx.createConvolver();
           dryGain = ctx.createGain();
           wetGain = ctx.createGain();
           masterGain = ctx.createGain();
-          source.connect(dryGain).connect(masterGain);
-          source.connect(convolver).connect(wetGain).connect(masterGain);
+          mix.connect(dryGain).connect(masterGain);
+          mix.connect(convolver).connect(wetGain).connect(masterGain);
           masterGain.connect(ctx.destination);
           applyReverbType();
           applyReverb(true);
           applyVolume(true);
+          applyMix(true);
+     }
+     // The two Separate Audio volumes (the main volume still sets the overall level).
+     function applyMix(instant = false) {
+          el.mixVocals.value = state.mixVocals;
+          el.mixMusic.value = state.mixMusic;
+          fill(el.mixVocals);
+          fill(el.mixMusic);
+          el.mixVocals.closest(".mix-row").title = `Vocals ${Math.round(state.mixVocals)}%`;
+          el.mixMusic.closest(".mix-row").title = `Instruments ${Math.round(state.mixMusic)}%`;
+          const mixing = state.activeStem === "mix";
+          desktop?.player.layers(
+               mixing ? Math.pow(state.mixVocals / 100, 2) : 1,
+               mixing ? Math.pow(state.mixMusic / 100, 2) : 0,
+          );
+          if (!ctx) return;
+          ramp(vocalsGain.gain, mixing ? Math.pow(state.mixVocals / 100, 2) : 1, instant);
+          ramp(musicGain.gain, mixing ? Math.pow(state.mixMusic / 100, 2) : 0, instant);
      }
      function ramp(param, value, instant) {
           if (instant) param.value = value;
@@ -891,6 +1020,7 @@
           const silent = state.muted || state.volume === 0;
           el.mute.innerHTML = silent ? ICON.muted : ICON.volume;
           el.mute.setAttribute("aria-label", state.muted ? "Unmute" : "Mute");
+          desktop?.player.volume(state.muted ? 0 : Math.pow(state.volume / 100, 2));
           if (ctx)
                ramp(
                     masterGain.gain,
@@ -904,6 +1034,7 @@
                     "aria-checked",
                     String(pill.dataset.reverbType === state.reverbType),
                );
+          desktop?.player.reverb(state.reverbType, state.reverb / 100);
           if (!ctx) return;
           impulses[state.reverbType] ||= makeImpulse(
                ctx,
@@ -916,6 +1047,7 @@
           el.reverb.value = state.reverb;
           fill(el.reverb);
           el.reverbVal.textContent = `${Math.round(state.reverb)}%`;
+          desktop?.player.reverb(state.reverbType, state.reverb / 100);
           if (!ctx) return;
           const mix = state.reverb / 100;
           // Equal-power style crossfade; at 100% the direct sound is almost gone.
@@ -933,6 +1065,8 @@
           audio.preservesPitch = state.keepPitch;
           audio.mozPreservesPitch = state.keepPitch;
           audio.webkitPreservesPitch = state.keepPitch;
+          follower.defaultPlaybackRate = follower.playbackRate = rate;
+          follower.preservesPitch = follower.mozPreservesPitch = follower.webkitPreservesPitch = state.keepPitch;
           el.speed.value = state.speed;
           fill(el.speed);
           el.speedVal.textContent = `${rate.toFixed(2)}×`;
@@ -950,10 +1084,32 @@
      // ───────────── playback ─────────────
      let loadToken = 0;
 
+     // "original", "vocals", "instrumental", or "mix" (Separate Audio: both at once).
      function wantedStem(track) {
           return state.mode !== "original" && track.stems.state === "done"
                ? state.mode
                : "original";
+     }
+     function stopFollower() {
+          follower.pause();
+          if (follower.getAttribute("src")) {
+               follower.removeAttribute("src");
+               follower.load();
+          }
+     }
+     // Puts the follower exactly where the main player is.
+     function syncFollower() {
+          if (state.activeStem !== "mix" || !follower.getAttribute("src")) return;
+          if (Math.abs(follower.currentTime - audio.currentTime) > 0.06) follower.currentTime = audio.currentTime;
+          if (audio.paused) follower.pause();
+          else if (follower.paused) follower.play().catch(() => {});
+     }
+     function renderMixer() {
+          const on = state.mode === "mix";
+          root.classList.toggle("mixing", on);
+          root.classList.toggle("mix-live", state.activeStem === "mix");
+          el.mixer.setAttribute("aria-hidden", String(!on));
+          el.mixVocals.tabIndex = el.mixMusic.tabIndex = on ? 0 : -1;
      }
 
      function loadSource(track, stem, time = 0, autoplay = true) {
@@ -961,8 +1117,12 @@
           state.activeStem = stem;
           state.loading = true;
           setBuffering(true);
-          audio.src = audioUrl(track.id, stem);
+          audio.src = audioUrl(track.id, stem === "mix" ? "vocals" : stem);
+          if (stem === "mix") follower.src = audioUrl(track.id, "instrumental");
+          else stopFollower();
           applySpeed();
+          applyMix(true);
+          renderMixer();
           audio.addEventListener(
                "loadedmetadata",
                () => {
@@ -973,6 +1133,7 @@
                               Math.max(0, audio.duration - 0.25),
                          );
                     state.loading = false;
+                    if (stem === "mix") follower.currentTime = audio.currentTime;
                     if (autoplay) play();
                },
                { once: true },
@@ -987,7 +1148,7 @@
                return;
           }
           ensureGraph();
-          if (ctx.state === "suspended") ctx.resume();
+          if (ctx?.state === "suspended") ctx.resume();
           state.wantPlaying = true;
           audio.play().catch(() => {
                /* interrupted by a newer load */
@@ -1026,7 +1187,7 @@
      function rebuildQueue() {
           if (state.context !== "library" && !playlistById(state.context))
                state.context = "library";
-          const ids = viewTracks(state.context).map(t => t.id);
+          const ids = filteredTracks(state.context).map(t => t.id);
           if (state.shuffle) {
                for (let i = ids.length - 1; i > 0; i--) {
                     const j = Math.floor(Math.random() * (i + 1));
@@ -1044,7 +1205,7 @@
      function next(auto = false) {
           if (!state.queue.length) return;
           if (auto && state.loop === "one") {
-               audio.currentTime = 0;
+               audio.currentTime = loopActive() ? loopRegion().a : 0;
                play();
                return;
           }
@@ -1081,7 +1242,7 @@
           );
      }
      function playView(shuffled) {
-          const tracks = viewTracks();
+          const tracks = filteredTracks();
           if (!tracks.length) return;
           if (shuffled && !state.shuffle) {
                state.shuffle = true;
@@ -1102,12 +1263,22 @@
      const isBusy = track =>
           track.stems.state === "queued" || track.stems.state === "running";
 
+     // ⋯ menu › Separate Audio: vocals and instruments play side by side, each
+     // with its own volume in the player bar.
+     function toggleSeparate() {
+          const on = state.mode !== "mix";
+          setMode(on ? "mix" : "original");
+          const track = currentTrack();
+          if (on && track && track.stems.state !== "done")
+               toast("Separating vocals and music… it switches on by itself when ready.");
+     }
      function setMode(mode) {
           state.mode = mode;
           applyMode();
      }
 
      function applyMode() {
+          renderMixer();
           const track = currentTrack();
           if (track) {
                if (state.mode !== "original" && track.stems.state !== "done")
@@ -1274,6 +1445,33 @@
           const album = document.createElement("span");
           album.className = "t-album";
           album.textContent = track.album || "—";
+          const type = document.createElement("span");
+          type.className = "t-type";
+          const kind = typeById(track.type);
+          if (kind) {
+               const tag = document.createElement("span");
+               tag.className = "type-tag";
+               tag.style.setProperty("--tc", kind.color);
+               tag.textContent = kind.label;
+               type.append(tag);
+          } else type.innerHTML = '<span class="none">—</span>';
+          const genres = document.createElement("span");
+          genres.className = "t-genres";
+          const list = track.genres || [];
+          if (list.length) {
+               genres.title = list.join(", ");
+               // Two genres, or one in narrower windows; the rest as "+n".
+               list.slice(0, 2).forEach((name, index) => {
+                    const chip = document.createElement("span");
+                    chip.className = index ? "g-chip g-second" : "g-chip";
+                    chip.textContent = name;
+                    genres.append(chip);
+               });
+               if (list.length > 2)
+                    genres.insertAdjacentHTML("beforeend", `<span class="g-more g-more-wide">+${list.length - 2}</span>`);
+               if (list.length > 1)
+                    genres.insertAdjacentHTML("beforeend", `<span class="g-more g-more-narrow">+${list.length - 1}</span>`);
+          } else genres.innerHTML = '<span class="none">—</span>';
           const duration = document.createElement("span");
           duration.className = "t-dur";
           duration.textContent = fmtTime(track.duration);
@@ -1285,7 +1483,7 @@
           more.setAttribute("aria-haspopup", "menu");
           more.innerHTML = ICON.more;
 
-          row.append(num, main, artist, album, duration, more);
+          row.append(num, main, artist, album, type, genres, duration, more);
           return row;
      }
 
@@ -1319,7 +1517,8 @@
 
      // `animate` plays the entrance animation (used when the view itself changes,
      // not for every re-render such as typing in the search box).
-     function renderView(animate = false) {
+     // `animate` plays the rows' entrance; `head` also replays the heading's.
+     function renderView(animate = false, head = animate) {
           if (!state.loaded) {
                el.viewSub.innerHTML = '<span class="sk sk-line sk-sub"></span>';
                el.list.classList.remove("enter");
@@ -1343,23 +1542,25 @@
           el.addMusic.hidden = !isLibrary;
           el.editPlaylist.hidden = el.deletePlaylist.hidden = isLibrary;
           disarm(el.deletePlaylist, "Delete Playlist");
-          el.playAll.disabled = el.shuffleAll.disabled = all.length === 0;
+          const matched = all.filter(matchesFilters);
+          el.playAll.disabled = el.shuffleAll.disabled = matched.length === 0;
 
           const query = state.filter.trim().toLowerCase();
-          const shown = all.filter(
+          const shown = matched.filter(
                t =>
                     !query ||
-                    `${t.title} ${t.artist} ${t.album}`
+                    `${t.title} ${t.artist} ${t.album} ${t.type || ""} ${(t.genres || []).join(" ")}`
                          .toLowerCase()
                          .includes(query),
           );
-          const pending = isLibrary && !query ? state.pendingUploads : 0;
+          const pending =
+               isLibrary && !query && !filtersOn() ? state.pendingUploads : 0;
           el.list.classList.toggle("enter", animate);
           el.list.replaceChildren(
                ...shown.map(trackRow),
                ...Array.from({ length: pending }, skeletonRow),
           );
-          if (animate) replay($(".view-head"), "enter");
+          if (head) replay($(".view-head"), "enter");
           el.tableHead.hidden = shown.length + pending === 0;
           el.emptyLibrary.hidden = !(
                isLibrary &&
@@ -1368,9 +1569,161 @@
           );
           el.emptyPlaylist.hidden = !(!isLibrary && all.length === 0);
           el.noResults.hidden = !(all.length > 0 && shown.length === 0);
+          el.noResultsText.textContent = filtersOn()
+               ? query
+                    ? "No songs match your search and filters."
+                    : "No songs match your filters."
+               : "No songs match your search.";
+          el.noResultsClear.hidden = !filtersOn();
+          el.filterBar.hidden = all.length === 0;
+          el.filterCount.textContent = filtersOn()
+               ? `${matched.length} of ${all.length} song${all.length === 1 ? "" : "s"}`
+               : "";
           renderActiveRow(false);
           renderBadges();
      }
+     // ───────────── filters: Type, Genre, Artist ─────────────
+     // Display names, keyed by their lower-case form, across the whole library.
+     function genreNames() {
+          const names = new Map();
+          for (const t of state.tracks)
+               for (const g of t.genres || []) if (!names.has(g.toLowerCase())) names.set(g.toLowerCase(), g);
+          return names;
+     }
+     function artistNames() {
+          const names = new Map();
+          for (const t of state.tracks)
+               for (const a of artistsOf(t)) if (!names.has(a.toLowerCase())) names.set(a.toLowerCase(), a);
+          return names;
+     }
+     // How many songs in the current view have each genre / artist.
+     function filterOptions(kind) {
+          const names = kind === "genre" ? genreNames() : artistNames();
+          const counts = new Map();
+          for (const t of viewTracks()) {
+               const keys = new Set(
+                    kind === "genre"
+                         ? (t.genres || []).map(g => g.toLowerCase())
+                         : artistsOf(t).map(a => a.toLowerCase()),
+               );
+               for (const key of keys) counts.set(key, (counts.get(key) || 0) + 1);
+          }
+          // A chosen one stays listed (with 0) even in a view that lacks it, so it can be unticked.
+          const chosen = kind === "genre" ? state.filters.genres : [state.filters.artist].filter(Boolean);
+          for (const key of chosen) if (!counts.has(key)) counts.set(key, 0);
+          return [...counts].map(([key, count]) => ({ key, count, label: names.get(key) || key }));
+     }
+
+     function setFilter(kind, value) {
+          const f = state.filters;
+          if (kind === "all") Object.assign(f, { type: "", genres: [], artist: "" });
+          else if (kind === "type") f.type = value;
+          else if (kind === "artist") f.artist = value;
+          else if (value === null) f.genres = [];
+          else f.genres = f.genres.includes(value) ? f.genres.filter(g => g !== value) : [...f.genres, value];
+          rebuildQueue(); // Play, Next and Shuffle follow the filters
+          renderFilters(kind);
+          renderView(true, false);
+     }
+
+     function openFilterMenu(kind, anchor, refresh = false) {
+          if (!refresh && menuAnchor === anchor) {
+               closeMenu();
+               return;
+          }
+          const f = state.filters;
+          const tracks = viewTracks();
+          let items;
+          if (kind === "type") {
+               items = [
+                    { label: "Any Type", checked: !f.type, action: () => setFilter("type", "") },
+                    { separator: true },
+                    ...TYPES.map(t => ({
+                         label: t.label,
+                         color: t.color,
+                         count: tracks.filter(x => x.type === t.id).length,
+                         checked: f.type === t.id,
+                         action: () => setFilter("type", t.id),
+                    })),
+                    {
+                         label: "Not Set",
+                         count: tracks.filter(x => !x.type).length,
+                         checked: f.type === "none",
+                         action: () => setFilter("type", "none"),
+                    },
+               ];
+          } else if (kind === "genre") {
+               // Several genres can be ticked (songs with any of them); the menu stays open.
+               const again = () => openFilterMenu("genre", anchor, true);
+               items = [
+                    {
+                         label: "Any Genre",
+                         checked: !f.genres.length,
+                         stay: true,
+                         action: () => {
+                              setFilter("genre", null);
+                              again();
+                         },
+                    },
+                    { separator: true },
+               ];
+               const options = filterOptions("genre").sort(
+                    (a, b) => b.count - a.count || a.label.localeCompare(b.label),
+               );
+               if (!options.length) items.push({ label: "No genres yet. Add them in Edit Song Info.", disabled: true });
+               for (const o of options)
+                    items.push({
+                         label: o.label,
+                         count: o.count,
+                         checked: f.genres.includes(o.key),
+                         stay: true,
+                         action: () => {
+                              setFilter("genre", o.key);
+                              again();
+                         },
+                    });
+          } else {
+               items = [
+                    { label: "All Artists", checked: !f.artist, action: () => setFilter("artist", "") },
+                    { separator: true },
+               ];
+               const options = filterOptions("artist").sort((a, b) =>
+                    a.label.localeCompare(b.label, undefined, { sensitivity: "base" }),
+               );
+               if (!options.length) items.push({ label: "No artists yet", disabled: true });
+               for (const o of options)
+                    items.push({
+                         label: o.label,
+                         count: o.count,
+                         checked: f.artist === o.key,
+                         action: () => setFilter("artist", o.key),
+                    });
+          }
+          showMenu(anchor, items, refresh);
+     }
+
+     // The chips show what is chosen; the one that just changed gives a little pop.
+     function renderFilters(changed) {
+          const f = state.filters;
+          for (const chip of el.filterChips) {
+               const kind = chip.dataset.filter;
+               let value = "";
+               if (kind === "type") value = f.type === "none" ? "Not set" : typeById(f.type)?.label || "";
+               else if (kind === "genre" && f.genres.length) {
+                    value = genreNames().get(f.genres[0]) || f.genres[0];
+                    if (f.genres.length > 1) value += ` +${f.genres.length - 1}`;
+               } else if (kind === "artist" && f.artist) value = artistNames().get(f.artist) || f.artist;
+               const shown = chip.querySelector(".fc-value");
+               const before = shown.textContent;
+               shown.textContent = value;
+               chip.classList.toggle("on", !!value);
+               const name = chip.querySelector(".fc-label").textContent;
+               chip.setAttribute("aria-label", value ? `${name}: ${value}` : `Filter by ${name.toLowerCase()}`);
+               if (before !== value && (changed === kind || changed === "all")) replay(chip, "bump");
+          }
+          el.filterClear.hidden = !filtersOn();
+     }
+
      function renderActiveRow(scroll) {
           for (const row of el.list.children) {
                const active = row.dataset.id === state.current;
@@ -1457,8 +1810,93 @@
           );
           root.classList.toggle("is-playing", state.wantPlaying);
           if (np.open) lyricsLoop();
+          loopWatch();
           renderActiveRow(false);
      }
+     // ───────────── A–B loop (with "Loop: this song") ─────────────
+     // Two dots on the seek bar mark the part of the song that repeats. They
+     // start at 0:00 and at the end; each song remembers its own for the session.
+     const loopRegions = new Map(); // track id → { a, b } in seconds (b = null: the end)
+     const MIN_LOOP = 1; // the shortest part that can be looped, in seconds
+     const loopActive = () => state.loop === "one" && !!currentTrack();
+     function songLength() {
+          const d = audio.duration;
+          return Number.isFinite(d) && d > 0 ? d : currentTrack()?.duration || 0;
+     }
+     function loopRegion() {
+          const track = currentTrack();
+          const len = songLength();
+          const saved = (track && loopRegions.get(track.id)) || { a: 0, b: null };
+          const b = saved.b == null ? len : Math.min(saved.b, len);
+          const a = Math.min(saved.a, Math.max(0, b - MIN_LOOP));
+          return { a, b, len, whole: a <= 0 && b >= len - 0.05 };
+     }
+     function renderLoop() {
+          const on = loopActive() && songLength() > MIN_LOOP * 2;
+          if (desktop) {
+               // The engine repeats the part itself, with no gap.
+               const region = on ? loopRegion() : null;
+               desktop.player.loop(
+                    region
+                         ? { start: region.a, end: region.whole ? null : region.b }
+                         : loopActive()
+                           ? { start: 0, end: null }
+                           : null,
+               );
+          }
+          el.seekTrack.classList.toggle("looping", on);
+          el.loopRange.setAttribute("aria-hidden", String(!on));
+          el.loopA.tabIndex = el.loopB.tabIndex = on ? 0 : -1;
+          if (!on) return;
+          const { a, b, len } = loopRegion();
+          el.loopRange.style.setProperty("--a", a / len);
+          el.loopRange.style.setProperty("--b", b / len);
+          const describe = (dot, now, min, max, what) => {
+               dot.setAttribute("aria-valuemin", Math.round(min));
+               dot.setAttribute("aria-valuemax", Math.round(max));
+               dot.setAttribute("aria-valuenow", Math.round(now));
+               dot.setAttribute("aria-valuetext", fmtTime(now));
+               dot.firstElementChild.textContent = fmtTime(now);
+               dot.title = `Loop ${what} ${fmtTime(now)}. Drag to move, double-click to reset.`;
+          };
+          describe(el.loopA, a, 0, b - MIN_LOOP, "starts at");
+          describe(el.loopB, b, a + MIN_LOOP, len, "ends at");
+     }
+     // Moves one dot. On release (`settle`), playback jumps into the new part
+     // if it is now outside it.
+     function setLoopEnd(end, seconds, settle) {
+          const track = currentTrack();
+          if (!track) return;
+          let { a, b, len } = loopRegion();
+          if (end === "a") a = clamp(seconds, 0, b - MIN_LOOP);
+          else b = clamp(seconds, a + MIN_LOOP, len);
+          loopRegions.set(track.id, { a, b: b >= len - 0.05 ? null : b });
+          renderLoop();
+          if (settle) keepInsideLoop(true);
+     }
+     // Past the end dot, go back to the start dot.
+     function keepInsideLoop(settle = false) {
+          if (!loopActive() || state.loading || el.loopRange.querySelector(".dragging")) return;
+          const { a, b, whole } = loopRegion();
+          if (whole) return; // the whole song: the normal "ended → start again" does it
+          const t = audio.currentTime;
+          // (The desktop engine jumps back by itself; only a seek past the end dot needs help.)
+          if ((desktop ? t >= b + 0.25 : t >= b - 0.02) || (settle && t < a)) {
+               audio.currentTime = a;
+               replay(el.loopA, "pulse");
+          }
+     }
+     // Checks every frame while playing, so the jump back lands right on the dot.
+     let loopFrame = 0;
+     function loopWatch() {
+          cancelAnimationFrame(loopFrame);
+          const step = () => {
+               keepInsideLoop();
+               if (state.wantPlaying && loopActive()) loopFrame = requestAnimationFrame(step);
+          };
+          step();
+     }
+
      function renderToggles() {
           el.shuffle.setAttribute("aria-pressed", String(state.shuffle));
           el.shuffle.title = `Shuffle: ${state.shuffle ? "on" : "off"}`;
@@ -1467,9 +1905,11 @@
           el.loop.title = {
                off: "Loop: off",
                all: "Loop: whole playlist",
-               one: "Loop: this song",
+               one: "Loop: this song (drag the two dots on the seek bar to repeat just a part)",
           }[state.loop];
           el.loop.setAttribute("aria-label", el.loop.title);
+          renderLoop();
+          loopWatch();
      }
      function renderProgress() {
           if (state.seeking) return;
@@ -1482,6 +1922,7 @@
           fill(el.seek);
           el.cur.textContent = fmtTime(Number(el.seek.value));
           el.dur.textContent = fmtTime(duration);
+          renderLoop();
      }
      function renderStems() {
           const track = currentTrack();
@@ -1525,10 +1966,11 @@
           } else if (stems.state === "error") {
                text = stems.error || "Separation failed.";
           } else if (playingStem) {
-               text =
-                    state.activeStem === "vocals"
-                         ? "Instruments removed. You are hearing vocals only."
-                         : "Vocals removed. Sing along!";
+               text = {
+                    vocals: "Instruments removed. You are hearing vocals only.",
+                    instrumental: "Vocals removed. Sing along!",
+                    mix: "Vocals and music separated. Set each one's volume in the player bar.",
+               }[state.activeStem];
           } else if (stems.state === "done") {
                text = "Ready. Both versions of this song switch on instantly.";
           } else {
@@ -1575,7 +2017,7 @@
                np.open = open;
                root.classList.toggle("np-open", open);
                el.np.hidden = !open;
-               if (open) el.npDock.prepend(el.playerbar);
+               if (open) el.npBarRow.prepend(el.playerbar);
                else el.main.prepend(el.playerbar);
                if (open) {
                     renderNowPlayingPage();
@@ -1615,6 +2057,13 @@
           active: -1,
           holdUntil: 0, // while the listener scrolls by hand, don't scroll for them
           frame: 0,
+          shown: (() => {
+               try {
+                    return localStorage.getItem(SHOW_LYRICS_KEY) !== "off";
+               } catch {
+                    return true;
+               }
+          })(),
           auto: (() => {
                try {
                     return localStorage.getItem(AUTO_LYRICS_KEY) === "on";
@@ -1637,7 +2086,6 @@
           lyrics.active = -1;
      }
      function lyricsSkeleton() {
-          el.lyricsMenuBtn.hidden = true;
           el.lyrics.className = "np-lyrics message";
           el.lyrics.innerHTML = '<span class="sk sk-ly"></span>'.repeat(5);
           lyrics.lines = [];
@@ -1683,8 +2131,6 @@
      }
 
      function renderLyrics(track, data) {
-          // The options button only shows while there are lyrics to remove.
-          el.lyricsMenuBtn.hidden = !(track && data && data.found);
           if (!track) {
                lyricsMessage(
                     "Nothing is playing",
@@ -1758,6 +2204,11 @@
      }
 
      async function showLyrics(track) {
+          if (!lyrics.shown) {
+               // Lyrics are switched off: load nothing, and look nothing up online.
+               lyrics.trackId = null;
+               return;
+          }
           lyrics.trackId = track ? track.id : null;
           if (!track) {
                renderLyrics(null);
@@ -1825,17 +2276,33 @@
           if (lyrics.trackId === track.id) renderLyrics(track, data);
           toast(`Removed the lyrics for “${track.title}”`);
      }
+     // The ⋯ menu on the lyrics page: "Remove Lyrics" while there are lyrics on
+     // screen, and always "Show Lyrics", which hides or brings back the lyrics box
+     // (for music without words, like EDM).
      function openLyricsMenu() {
           const track = currentTrack();
-          if (!track) return;
-          showMenu(el.lyricsMenuBtn, [
-               {
+          const data = track && lyrics.cache.get(track.id);
+          const items = [];
+          if (lyrics.shown && data && data.found) {
+               items.push({
                     label: "Remove Lyrics",
                     danger: true,
                     confirm: "Click again to remove",
                     action: () => removeLyrics(track),
-               },
-          ]);
+               });
+               items.push({ separator: true });
+          }
+          items.push({
+               label: "Show Lyrics",
+               checked: lyrics.shown,
+               action: () => setShowLyrics(!lyrics.shown, true),
+          });
+          items.push({
+               label: "Separate Audio",
+               checked: state.mode === "mix",
+               action: toggleSeparate,
+          });
+          showMenu(el.lyricsMenuBtn, items);
      }
 
      function setAutoLyrics(on) {
@@ -1913,6 +2380,7 @@
      }
      function lyricsLoop() {
           cancelAnimationFrame(lyrics.frame);
+          if (!lyrics.shown) return;
           const step = () => {
                if (!np.open) return;
                syncLyrics();
@@ -1955,6 +2423,69 @@
           );
      }
 
+     // Keeps the sung line in the middle while the lyrics box changes size
+     // (for example while the controls below fold away).
+     function centreLyrics() {
+          if (!lyrics.lines.length || performance.now() < lyrics.holdUntil) return;
+          const target = el.lyrics.children[Math.max(lyrics.active, 0)];
+          if (target)
+               el.lyrics.scrollTop =
+                    target.offsetTop -
+                    (el.lyrics.clientHeight - target.offsetHeight) / 2;
+     }
+
+     // Settings › Lyrics › Show lyrics. Off: the lyrics box disappears and the
+     // cover takes the stage (handy for music without words).
+     function setShowLyrics(on, persist) {
+          lyrics.shown = on;
+          root.classList.toggle("no-lyrics", !on);
+          el.autoLyrics.closest(".set-group").classList.toggle("dimmed", !on);
+          if (persist) remember(SHOW_LYRICS_KEY, on ? "on" : "off");
+          if (on && np.open) {
+               showLyrics(currentTrack());
+               lyricsLoop();
+          }
+     }
+
+     // Each panel on the lyrics page (the player bar, the sound controls) has a
+     // button beside it that tucks it away. The button then glides to the
+     // bottom-right corner and waits there to bring its panel back.
+     const PANELS = {
+          bar: { cls: "np-hide-bar", key: NP_BAR_KEY, label: "player bar" },
+          sound: { cls: "np-hide-sound", key: NP_SOUND_KEY, label: "sound controls" },
+     };
+     function setPanelHidden(name, hidden, persist) {
+          const panel = PANELS[name];
+          const button = name === "bar" ? el.foldBar : el.foldSound;
+          const home = name === "bar" ? el.npBarRow : el.npSoundRow;
+          const was = root.classList.contains(panel.cls);
+          const hadFocus = document.activeElement === button;
+          const first = button.getBoundingClientRect();
+
+          root.classList.toggle(panel.cls, hidden);
+          home.closest(".np-fold").inert = hidden;
+          if (!hidden) home.append(button);
+          else if (name === "bar") el.npTray.prepend(button); // Player before Sound
+          else el.npTray.append(button);
+          const what = `${hidden ? "Show" : "Hide"} ${panel.label}`;
+          button.setAttribute("aria-label", what);
+          button.setAttribute("aria-expanded", String(!hidden));
+          button.title = what;
+          if (persist) remember(panel.key, hidden ? "hidden" : "shown");
+          if (hadFocus) button.focus({ preventScroll: true });
+
+          // Glide from where it was to where it is now.
+          if (np.open && was !== hidden && motionOn()) {
+               const last = button.getBoundingClientRect();
+               const dx = first.left + first.width / 2 - (last.left + last.width / 2);
+               const dy = first.top + first.height / 2 - (last.top + last.height / 2);
+               button.animate(
+                    [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: "none" }],
+                    { duration: 650, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" },
+               );
+          }
+     }
+
      // ───────────── sidebar ─────────────
      function setSidebar(shown, persist) {
           root.classList.toggle("side-hidden", !shown);
@@ -1971,8 +2502,12 @@
           menuAnchor = null;
           el.menu.hidden = true;
      }
-     function showMenu(anchor, items) {
-          closeMenu();
+     // `refresh` re-draws an open menu in place (no pop-in), keeping keyboard focus.
+     function showMenu(anchor, items, refresh = false) {
+          const focusAt = refresh
+               ? [...el.menu.querySelectorAll(".menu-item")].indexOf(document.activeElement)
+               : -1;
+          if (!refresh) closeMenu();
           el.menu.replaceChildren(
                ...items.map(item => {
                     if (item.separator) return document.createElement("hr");
@@ -1987,23 +2522,41 @@
                     button.className = `menu-item${item.danger ? " danger" : ""}`;
                     button.setAttribute("role", "menuitem");
                     button.disabled = !!item.disabled;
+                    if (item.color) {
+                         const dot = document.createElement("span");
+                         dot.className = "menu-dot";
+                         dot.style.setProperty("--tc", item.color);
+                         button.append(dot);
+                    }
                     const label = document.createElement("span");
+                    label.className = "menu-label";
                     label.textContent = item.label;
                     button.append(label);
+                    if (item.count != null)
+                         button.insertAdjacentHTML("beforeend", `<span class="menu-count">${item.count}</span>`);
                     if (item.checked)
                          button.insertAdjacentHTML("beforeend", ICON.check);
+                    if (item.stay) {
+                         button.setAttribute("role", "menuitemcheckbox");
+                         button.setAttribute("aria-checked", String(!!item.checked));
+                    }
                     button.addEventListener("click", () => {
                          if (item.confirm && !button.dataset.armed) {
                               button.dataset.armed = "1";
                               label.textContent = item.confirm;
                               return;
                          }
-                         closeMenu();
+                         if (!item.stay) closeMenu();
                          item.action();
                     });
                     return button;
                }),
           );
+          if (refresh && !el.menu.hidden) {
+               const again = el.menu.querySelectorAll(".menu-item")[focusAt];
+               if (again) again.focus({ preventScroll: true });
+               return;
+          }
           el.menu.hidden = false;
           const anchorBox = anchor.getBoundingClientRect(),
                menuBox = el.menu.getBoundingClientRect();
@@ -2138,6 +2691,32 @@
           el.imageInput.click();
      }
      // Big photos are scaled down before they are sent, so covers stay light.
+     // Pictures this browser cannot show by itself (HEIC / HEIF from iPhones,
+     // TIFF, …) are converted by the player first, so they can be previewed and
+     // saved like any other. Returns null (after saying why) if it can't be opened.
+     async function readablePicture(file) {
+          try {
+               (await createImageBitmap(file)).close();
+               return file;
+          } catch {
+               /* not one the browser can decode: let the player convert it */
+          }
+          const form = new FormData();
+          form.append("image", file, file.name || "picture");
+          try {
+               const response = await (desktop ? desktop.fetch : fetch)("/api/images/convert", { method: "POST", body: form });
+               if (!response.ok) {
+                    const data = await response.json().catch(() => ({}));
+                    toast(data.error || "That file is not a picture Lewisis' Music can open.", "error");
+                    return null;
+               }
+               const blob = await response.blob();
+               return new File([blob], blob.type === "image/png" ? "picture.png" : "picture.jpg", { type: blob.type });
+          } catch {
+               toast("Could not reach the player. Is it still running?", "error");
+               return null;
+          }
+     }
      async function imageForUpload(file) {
           const bitmap = await createImageBitmap(file);
           const longest = Math.max(bitmap.width, bitmap.height);
@@ -2236,7 +2815,115 @@
      }
 
      // Song info: title, artist, album and cover.
-     const trackEdit = { track: null, cover: undefined };
+     const trackEdit = { track: null, cover: undefined, type: "", genres: [] };
+
+     // Type: one of "Not set" + TYPES.
+     function renderTypePick() {
+          el.trkType.replaceChildren(
+               ...[{ id: "", label: "Not set" }, ...TYPES].map(t => {
+                    const option = document.createElement("button");
+                    option.type = "button";
+                    option.className = "type-opt";
+                    option.dataset.type = t.id;
+                    option.setAttribute("role", "radio");
+                    if (t.color) option.style.setProperty("--tc", t.color);
+                    option.textContent = t.label;
+                    option.addEventListener("click", () => {
+                         trackEdit.type = t.id;
+                         markChoice(el.trkType, radio => radio.dataset.type === trackEdit.type);
+                    });
+                    return option;
+               }),
+          );
+     }
+
+     // Genres: chips you can remove, a box to type new ones, and suggestions.
+     const genreKey = name => name.trim().toLowerCase();
+     function knownGenres() {
+          const used = new Map(); // genres already in the library, most used first
+          for (const t of state.tracks)
+               for (const g of t.genres || []) {
+                    const entry = used.get(genreKey(g));
+                    if (entry) entry.n++;
+                    else used.set(genreKey(g), { name: g, n: 1 });
+               }
+          const list = [...used.values()].sort((a, b) => b.n - a.n).map(e => e.name);
+          for (const g of GENRE_SUGGESTIONS) if (!used.has(genreKey(g))) list.push(g);
+          return list;
+     }
+     function addGenre(text) {
+          for (const part of text.split(/[,;/]/)) {
+               const typed = part.replace(/\s+/g, " ").trim().slice(0, 40);
+               if (!typed) continue;
+               // "future house" becomes "Future House" when that genre is known.
+               const name = knownGenres().find(g => genreKey(g) === genreKey(typed)) || typed;
+               if (trackEdit.genres.some(g => genreKey(g) === genreKey(name))) continue;
+               if (trackEdit.genres.length >= 15) {
+                    toast("A song can have up to 15 genres.", "error");
+                    break;
+               }
+               trackEdit.genres.push(name);
+               renderGenreChips(name);
+          }
+          el.trkGenreInput.value = "";
+          renderGenreSuggest();
+     }
+     function removeGenre(name, chip) {
+          trackEdit.genres = trackEdit.genres.filter(g => g !== name);
+          const done = () => {
+               renderGenreChips();
+               renderGenreSuggest();
+          };
+          if (chip && motionOn()) {
+               chip.classList.add("out");
+               setTimeout(done, 150);
+          } else done();
+     }
+     function renderGenreChips(fresh) {
+          el.trkGenreChips.replaceChildren(
+               ...trackEdit.genres.map(name => {
+                    const chip = document.createElement("span");
+                    chip.className = name === fresh ? "g-chip new" : "g-chip";
+                    const label = document.createElement("span");
+                    label.textContent = name;
+                    const remove = document.createElement("button");
+                    remove.type = "button";
+                    remove.className = "g-remove";
+                    remove.setAttribute("aria-label", `Remove ${name}`);
+                    remove.innerHTML = ICON.close;
+                    remove.addEventListener("click", event => {
+                         event.stopPropagation();
+                         removeGenre(name, chip);
+                         el.trkGenreInput.focus();
+                    });
+                    chip.append(label, remove);
+                    return chip;
+               }),
+          );
+     }
+     function renderGenreSuggest(enter = false) {
+          const query = genreKey(el.trkGenreInput.value);
+          const chosen = new Set(trackEdit.genres.map(genreKey));
+          const options = knownGenres()
+               .filter(g => !chosen.has(genreKey(g)) && (!query || genreKey(g).includes(query)))
+               .slice(0, 12);
+          el.trkGenreSuggest.classList.toggle("enter", enter);
+          el.trkGenreSuggest.replaceChildren(
+               ...options.map((name, index) => {
+                    const option = document.createElement("button");
+                    option.type = "button";
+                    option.className = "pill";
+                    option.textContent = name;
+                    option.title = `Add ${name}`;
+                    option.style.setProperty("--i", index);
+                    option.addEventListener("click", () => {
+                         addGenre(name);
+                         el.trkGenreInput.focus();
+                    });
+                    return option;
+               }),
+          );
+     }
      function paintTrackPick() {
           const track = trackEdit.track;
           paintPick(
@@ -2251,6 +2938,12 @@
           closeMenu();
           trackEdit.track = track;
           trackEdit.cover = undefined;
+          trackEdit.type = track.type || "";
+          trackEdit.genres = [...(track.genres || [])];
+          markChoice(el.trkType, radio => radio.dataset.type === trackEdit.type);
+          el.trkGenreInput.value = "";
+          renderGenreChips();
+          renderGenreSuggest(true);
           el.trkName.value = track.title;
           el.trkArtist.value = track.artist || "";
           el.trkAlbum.value = track.album || "";
@@ -2275,6 +2968,8 @@
                title,
                artist: el.trkArtist.value,
                album: el.trkAlbum.value,
+               type: trackEdit.type,
+               genres: (addGenre(el.trkGenreInput.value), trackEdit.genres), // keep a genre typed but not yet added
           });
           if (!result.error && trackEdit.cover)
                result = await uploadPicture(
@@ -2299,7 +2994,9 @@
                result.title !== track.title || result.artist !== track.artist;
           Object.assign(track, result, { stems: track.stems }); // keep the live separation state
           if (renamed) lyrics.tried.delete(track.id); // a corrected name deserves a fresh lyrics search
+          if (filtersOn()) rebuildQueue(); // the song may now be in or out of the filters
           renderView();
+          renderFilters();
           if (state.current === track.id) renderNowPlaying();
           closeDialog(el.trackDialog);
           toast(`Saved “${track.title}”`);
@@ -2475,7 +3172,111 @@
           if (tracks.some(isBusy)) schedulePoll();
      }
 
-     async function addFiles(fileList) {
+     // ───────────── Settings › Migrate: add a whole folder ─────────────
+     // The folder's MP3 / WAV / FLAC files (subfolders too) are sent one at a
+     // time, in folder order, and copied into data/music. Songs already in the
+     // library are skipped by the server (it compares their contents).
+     const migrate = { songs: [], others: 0, folder: "", running: false, stop: false };
+     const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+     const FOLDER_ICON = el.migIcon.innerHTML;
+
+     function scanFolder(entries) {
+          if (migrate.running) return;
+          const visible = entries.filter(e => !e.path.split("/").some(part => part.startsWith(".")));
+          migrate.songs = visible
+               .filter(e => /\.(mp3|wav|flac)$/i.test(e.path))
+               .sort((a, b) => a.path.localeCompare(b.path, undefined, { numeric: true, sensitivity: "base" }));
+          migrate.others = visible.length - migrate.songs.length;
+          migrate.folder = (entries[0]?.path.includes("/") && entries[0].path.split("/")[0]) || "Chosen folder";
+          el.migCard.hidden = false;
+          replay(el.migCard, "enter");
+          el.migCard.classList.remove("running", "done");
+          el.migIcon.innerHTML = FOLDER_ICON;
+          el.migFolder.textContent = migrate.folder;
+          el.migBar.hidden = true;
+          el.migNow.textContent = "";
+          el.migIssues.hidden = true;
+          el.migStop.hidden = el.migShow.hidden = true;
+          const count = migrate.songs.length;
+          el.migSummary.textContent = count
+               ? `Found ${plural(count, "song")}` +
+                 (migrate.others ? ` (${plural(migrate.others, "other file")} will be left out).` : ".")
+               : "No MP3, WAV or FLAC files in this folder.";
+          el.migStart.hidden = !count;
+          el.migStart.textContent = `Migrate ${plural(count, "Song")}`;
+          if (count) el.migStart.focus({ preventScroll: true });
+     }
+
+     async function runMigration() {
+          const songs = migrate.songs;
+          if (!songs.length || migrate.running) return;
+          Object.assign(migrate, { running: true, stop: false });
+          let added = 0, duplicates = 0;
+          const failed = [];
+          el.migCard.classList.add("running");
+          el.migStart.hidden = true;
+          el.migStop.hidden = false;
+          el.migChoose.disabled = true;
+          el.migBar.hidden = false;
+          el.migIssues.hidden = true;
+          const bar = el.migBar.firstElementChild;
+          bar.style.width = "0%";
+          let done = 0;
+          for (const { file, path } of songs) {
+               if (migrate.stop) break;
+               el.migSummary.textContent = `Copying ${done + 1} of ${songs.length}…`;
+               el.migNow.textContent = path;
+               const form = new FormData();
+               form.append("files", file, file.name);
+               const result = await api("/api/tracks?skipDuplicates=1", { method: "POST", body: form }).catch(() => ({
+                    error: "Could not reach the player.",
+               }));
+               if (result.error || result.rejected?.length) failed.push(path);
+               duplicates += result.duplicates?.length || 0;
+               if (result.added?.length) {
+                    added += result.added.length;
+                    state.tracks.push(...result.added);
+                    justAdded = new Set(result.added.map(t => t.id));
+                    if (state.loaded) renderView();
+                    justAdded = new Set();
+               }
+               done++;
+               bar.style.width = `${(done / songs.length) * 100}%`;
+          }
+          Object.assign(migrate, { running: false });
+          if (state.context === "library") rebuildQueue();
+          renderFilters();
+          if (state.tracks.some(isBusy)) schedulePoll();
+
+          const stopped = done < songs.length;
+          el.migCard.classList.remove("running");
+          el.migCard.classList.add("done");
+          el.migIcon.innerHTML = ICON.check;
+          el.migStop.hidden = true;
+          el.migChoose.disabled = false;
+          el.migNow.textContent = "";
+          el.migShow.hidden = !added;
+          el.migSummary.textContent =
+               (stopped ? `Stopped after ${done} of ${songs.length}. ` : "") +
+               (added || !duplicates
+                    ? `Added ${plural(added, "song")}.` +
+                      (duplicates ? ` ${plural(duplicates, "song")} ${duplicates === 1 ? "was" : "were"} already in your library.` : "")
+                    : `Nothing new: ${duplicates === 1 ? "that song is" : `all ${duplicates} songs are`} already in your library.`) +
+               (failed.length ? ` ${plural(failed.length, "file")} couldn't be added:` : "");
+          el.migIssues.hidden = !failed.length;
+          el.migIssues.replaceChildren(
+               ...failed.map(name => {
+                    const item = document.createElement("li");
+                    item.textContent = name;
+                    return item;
+               }),
+          );
+          if (!el.settings.open) toast(`Migration finished: added ${plural(added, "song")}`);
+     }
+
+     // `upload` replaces the browser upload (the desktop app's native picker
+     // hands over file paths instead of file contents).
+     async function addFiles(fileList, upload = null) {
           const files = [...fileList];
           const accepted = files.filter(f => /\.(mp3|wav|flac)$/i.test(f.name));
           const skipped = files.length - accepted.length;
@@ -2500,11 +3301,15 @@
                     `Adding ${accepted.length} song${accepted.length === 1 ? "" : "s"}…`,
                );
           const form = new FormData();
-          for (const file of accepted) form.append("files", file, file.name);
-          const result = await api("/api/tracks", {
-               method: "POST",
-               body: form,
-          }).catch(() => ({
+          if (!upload) for (const file of accepted) form.append("files", file, file.name);
+          const result = await (
+               upload
+                    ? upload(accepted)
+                    : api("/api/tracks", {
+                           method: "POST",
+                           body: form,
+                      })
+          ).catch(() => ({
                error: "Upload failed. Is the player still running?",
           }));
           state.pendingUploads -= accepted.length;
@@ -2558,6 +3363,7 @@
                audio.pause();
                audio.removeAttribute("src");
                audio.load();
+               stopFollower();
                setBuffering(false);
                state.current = null;
                state.wantPlaying = false;
@@ -2589,6 +3395,48 @@
      });
      el.playAll.addEventListener("click", () => playView(false));
      el.shuffleAll.addEventListener("click", () => playView(true));
+
+     // Loop dots: drag them, use the arrow keys (Shift for 5 s), or double-click to reset.
+     const dotTime = event => {
+          const box = el.loopRange.getBoundingClientRect();
+          return clamp((event.clientX - box.left) / box.width, 0, 1) * songLength();
+     };
+     for (const dot of [el.loopA, el.loopB]) {
+          const end = dot.dataset.end;
+          dot.addEventListener("pointerdown", event => {
+               if (!loopActive()) return;
+               event.preventDefault();
+               event.stopPropagation();
+               dot.setPointerCapture(event.pointerId);
+               dot.classList.add("dragging");
+               dot.focus({ preventScroll: true, focusVisible: false });
+          });
+          dot.addEventListener("pointermove", event => {
+               if (dot.classList.contains("dragging")) setLoopEnd(end, dotTime(event), false);
+          });
+          dot.addEventListener("pointerup", event => {
+               if (!dot.classList.contains("dragging")) return;
+               dot.classList.remove("dragging");
+               setLoopEnd(end, dotTime(event), true);
+          });
+          dot.addEventListener("pointercancel", () => dot.classList.remove("dragging"));
+          dot.addEventListener("dblclick", () => setLoopEnd(end, end === "a" ? 0 : songLength(), true));
+          dot.addEventListener("keydown", event => {
+               const { a, b } = loopRegion();
+               const now = end === "a" ? a : b;
+               const step = event.shiftKey ? 5 : 1;
+               const to = {
+                    ArrowLeft: now - step, ArrowDown: now - step,
+                    ArrowRight: now + step, ArrowUp: now + step,
+                    PageDown: now - 10, PageUp: now + 10,
+                    Home: 0, End: songLength(),
+               }[event.key];
+               if (to === undefined) return;
+               event.preventDefault();
+               event.stopPropagation();
+               setLoopEnd(end, to, true);
+          });
+     }
 
      el.seek.addEventListener("input", () => {
           state.seeking = true;
@@ -2708,7 +3556,8 @@
           el.imageInput.value = "";
           const callback = onImagePicked;
           onImagePicked = null;
-          if (file && callback) callback(file);
+          if (file && callback)
+               readablePicture(file).then(picture => picture && callback(picture));
      });
      el.viewArt.addEventListener("click", openViewArtMenu);
      el.viewArt.addEventListener("keydown", event => {
@@ -2794,6 +3643,13 @@
           }
      });
      el.autoLyrics.checked = lyrics.auto;
+     for (const button of [el.foldBar, el.foldSound]) {
+          const name = button.dataset.panel;
+          button.addEventListener("click", () =>
+               setPanelHidden(name, !root.classList.contains(PANELS[name].cls), true),
+          );
+     }
+     new ResizeObserver(centreLyrics).observe(el.lyrics);
      el.autoLyrics.addEventListener("change", () =>
           setAutoLyrics(el.autoLyrics.checked),
      );
@@ -2953,7 +3809,7 @@
           if (
                !el.menu.hidden &&
                !el.menu.contains(event.target) &&
-               !event.target.closest(".t-more, #viewArt, #lyricsMenuBtn")
+               !event.target.closest(".t-more, #viewArt, #lyricsMenuBtn, .filter-chip")
           )
                closeMenu();
      });
@@ -2982,11 +3838,329 @@
      });
 
      // Adding music
+     // ───────────── Settings › Hotkeys ─────────────
+     // Each action has a default key; the listener's own choices are saved in the
+     // browser. A key is stored by its position on the keyboard (event.code, like
+     // "KeyM" or "ArrowRight"), with any Ctrl / Alt / Shift / Meta in front.
+     const HOTKEYS = [
+          { group: "Playback", id: "playPause", label: "Play / pause", key: "Space" },
+          { id: "next", label: "Next song", key: "Shift+ArrowRight" },
+          { id: "prev", label: "Previous song", key: "Shift+ArrowLeft" },
+          { id: "seekForward", label: "Forward 5 seconds", key: "ArrowRight" },
+          { id: "seekBack", label: "Back 5 seconds", key: "ArrowLeft" },
+          { id: "shuffle", label: "Shuffle on / off", key: "KeyS" },
+          { id: "loop", label: "Loop (off, playlist, this song)", key: "KeyL" },
+          { group: "Sound", id: "volumeUp", label: "Volume up", key: "ArrowUp" },
+          { id: "volumeDown", label: "Volume down", key: "ArrowDown" },
+          { id: "mute", label: "Mute / unmute", key: "KeyM" },
+          { id: "speedUp", label: "Faster", key: "BracketRight" },
+          { id: "speedDown", label: "Slower", key: "BracketLeft" },
+          { id: "speedReset", label: "Normal speed", key: "Backslash" },
+          { group: "Vocals & music", id: "acapella", label: "Acapella on / off", key: "KeyA" },
+          { id: "karaoke", label: "Karaoke on / off", key: "KeyK" },
+          { group: "Screens", id: "lyrics", label: "Open / close the lyrics page", key: "KeyF" },
+          { id: "sidebar", label: "Show / hide the sidebar", key: "KeyB" },
+          { id: "search", label: "Search songs", key: "Slash" },
+          { id: "settings", label: "Settings", key: "Comma" },
+     ];
+     const HOTKEYS_KEY = "lewisis-music.hotkeys";
+     const hotkeys = (() => {
+          let saved = {};
+          try {
+               saved = JSON.parse(localStorage.getItem(HOTKEYS_KEY)) || {};
+          } catch {
+               /* private mode or a broken value: use the defaults */
+          }
+          return Object.fromEntries(HOTKEYS.map(h => [h.id, typeof saved[h.id] === "string" ? saved[h.id] : h.key]));
+     })();
+     const saveHotkeys = () => remember(HOTKEYS_KEY, JSON.stringify(hotkeys));
+     const actionFor = combo => HOTKEYS.find(h => hotkeys[h.id] === combo);
+     const MODIFIER_CODES = /^(Shift|Control|Alt|Meta|OS)(Left|Right)?$/;
+
+     // "Shift+ArrowRight" from a key press (null for a lone Shift, Ctrl, …).
+     // Some virtual and remote keyboards leave event.code empty: work it out from
+     // the character typed instead.
+     const CODE_FOR_KEY = {
+          " ": "Space", "[": "BracketLeft", "]": "BracketRight", "/": "Slash", "\\": "Backslash",
+          ",": "Comma", ".": "Period", ";": "Semicolon", "'": "Quote", "-": "Minus", "=": "Equal", "`": "Backquote",
+          "{": "BracketLeft", "}": "BracketRight", "?": "Slash", "|": "Backslash", "<": "Comma", ">": "Period",
+          ":": "Semicolon", '"': "Quote", _: "Minus", "+": "Equal", "~": "Backquote",
+     };
+     function codeOf(event) {
+          if (event.code) return event.code;
+          const key = event.key || "";
+          if (/^[a-z]$/i.test(key)) return "Key" + key.toUpperCase();
+          if (/^[0-9]$/.test(key)) return "Digit" + key;
+          return CODE_FOR_KEY[key] || key;
+     }
+     function comboOf(event) {
+          const code = codeOf(event);
+          if (!code || MODIFIER_CODES.test(code) || /^(Shift|Control|Alt|Meta)$/.test(event.key)) return null;
+          const parts = [];
+          if (event.ctrlKey) parts.push("Ctrl");
+          if (event.altKey) parts.push("Alt");
+          if (event.shiftKey) parts.push("Shift");
+          if (event.metaKey) parts.push("Meta");
+          parts.push(code);
+          return parts.join("+");
+     }
+     const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+     const KEY_NAMES = {
+          Space: "Space", Enter: "Enter", NumpadEnter: "Enter", Backspace: "Backspace", Delete: "Delete",
+          ArrowLeft: "←", ArrowRight: "→", ArrowUp: "↑", ArrowDown: "↓", PageUp: "Page Up", PageDown: "Page Down",
+          Comma: ",", Period: ".", Slash: "/", Backslash: "\\", BracketLeft: "[", BracketRight: "]",
+          Semicolon: ";", Quote: "'", Minus: "-", Equal: "=", Backquote: "`", IntlBackslash: "\\",
+          Ctrl: IS_MAC ? "⌃" : "Ctrl", Alt: IS_MAC ? "⌥" : "Alt", Shift: "Shift", Meta: IS_MAC ? "⌘" : "Super",
+     };
+     function keyName(part) {
+          if (KEY_NAMES[part]) return KEY_NAMES[part];
+          if (/^Key[A-Z]$/.test(part)) return part.slice(3);
+          if (/^Digit\d$/.test(part)) return part.slice(5);
+          if (/^Numpad/.test(part)) return "Num " + part.slice(6);
+          return part;
+     }
+     const comboText = combo => (combo ? combo.split("+").map(keyName).join(" + ") : "no shortcut");
+     function keysHtml(combo) {
+          if (!combo) return '<span class="none">Not set</span>';
+          return combo
+               .split("+")
+               .map(part => `<kbd>${keyName(part).replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c])}</kbd>`)
+               .join('<span class="hk-plus">+</span>');
+     }
+
+     // The little notice that tells you what a hotkey just did.
+     function hud(text, icon = "") {
+          el.hud.innerHTML = icon;
+          el.hud.append(text);
+          replay(el.hud, "show");
+     }
+     const stemModeIs = mode => state.mode === mode;
+     const HOTKEY_ACTIONS = {
+          playPause: () => {
+               togglePlay();
+               if (currentTrack()) hud(state.wantPlaying ? "Playing" : "Paused", state.wantPlaying ? ICON.play : ICON.pause);
+          },
+          next: () => next(false),
+          prev: () => prev(),
+          seekForward: () => {
+               if (currentTrack()) audio.currentTime = Math.min(audio.currentTime + 5, audio.duration || Infinity);
+          },
+          seekBack: () => {
+               if (currentTrack()) audio.currentTime = Math.max(audio.currentTime - 5, 0);
+          },
+          shuffle: () => {
+               el.shuffle.click();
+               hud(`Shuffle ${state.shuffle ? "on" : "off"}`);
+          },
+          loop: () => {
+               el.loop.click();
+               hud({ off: "Loop off", all: "Loop: whole playlist", one: "Loop: this song" }[state.loop], state.loop === "one" ? ICON.loopOne : ICON.loop);
+          },
+          volumeUp: () => changeVolume(5),
+          volumeDown: () => changeVolume(-5),
+          mute: () => {
+               el.mute.click();
+               hud(state.muted ? "Muted" : `Volume ${Math.round(state.volume)}%`, state.muted ? ICON.muted : ICON.volume);
+          },
+          speedUp: () => changeSpeed(state.speed + 5),
+          speedDown: () => changeSpeed(state.speed - 5),
+          speedReset: () => changeSpeed(100),
+          acapella: () => {
+               setMode(stemModeIs("vocals") ? "original" : "vocals");
+               hud(stemModeIs("vocals") ? "Acapella on" : "Acapella off");
+          },
+          karaoke: () => {
+               setMode(stemModeIs("instrumental") ? "original" : "instrumental");
+               hud(stemModeIs("instrumental") ? "Karaoke on" : "Karaoke off");
+          },
+          lyrics: () => setNowPlaying(!np.open),
+          sidebar: () => {
+               if (!np.open) el.sidebarBtn.click();
+          },
+          search: () => {
+               if (np.open) setNowPlaying(false);
+               if (root.classList.contains("side-hidden")) setSidebar(true, true);
+               setTimeout(() => el.search.focus(), np.open ? 450 : 0);
+          },
+          settings: () => openSettings(),
+     };
+     function changeVolume(by) {
+          state.volume = clamp(state.volume + by, 0, 100);
+          state.muted = false;
+          applyVolume();
+          saveSettings();
+          hud(`Volume ${Math.round(state.volume)}%`, state.volume ? ICON.volume : ICON.muted);
+     }
+     function changeSpeed(to) {
+          state.speed = clamp(to, 50, 200);
+          applySpeed();
+          saveSettings();
+          hud(`Speed ${(state.speed / 100).toFixed(2)}×`);
+     }
+
+     // The list in Settings › Hotkeys. Click a shortcut, press keys: done.
+     // Esc cancels; Backspace or Delete removes the shortcut.
+     let recording = null; // { id, button } while waiting for keys
+     const RESET_ICON = '<svg viewBox="0 0 24 24"><path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/></svg>';
+     function renderHotkeys(fresh) {
+          const sections = [];
+          let section = null;
+          for (const hotkey of HOTKEYS) {
+               if (hotkey.group) {
+                    section = document.createElement("section");
+                    section.className = "hk-section";
+                    section.innerHTML = `<h4>${hotkey.group}</h4>`;
+                    sections.push(section);
+               }
+               const row = document.createElement("div");
+               row.className = "hk-row";
+               row.dataset.id = hotkey.id;
+               row.classList.toggle("changed", hotkeys[hotkey.id] !== hotkey.key);
+               const name = document.createElement("span");
+               name.className = "hk-name";
+               name.id = `hk-${hotkey.id}`;
+               name.textContent = hotkey.label;
+               const key = document.createElement("button");
+               key.type = "button";
+               key.className = hotkey.id === fresh ? "hk-key set" : "hk-key";
+               key.innerHTML = keysHtml(hotkeys[hotkey.id]);
+               key.setAttribute("aria-describedby", name.id);
+               key.setAttribute("aria-label", `${hotkey.label}: ${comboText(hotkeys[hotkey.id])}. Press to change.`);
+               key.addEventListener("click", () => startRecording(hotkey.id, key));
+               const reset = document.createElement("button");
+               reset.type = "button";
+               reset.className = "hk-reset";
+               reset.innerHTML = RESET_ICON;
+               reset.title = `Back to ${comboText(hotkey.key)}`;
+               reset.setAttribute("aria-label", `Reset ${hotkey.label} to ${comboText(hotkey.key)}`);
+               reset.addEventListener("click", () => assignHotkey(hotkey.id, hotkey.key));
+               row.append(name, key, reset);
+               section.append(row);
+          }
+          el.hotkeyList.replaceChildren(...sections);
+     }
+     function startRecording(id, button) {
+          stopRecording();
+          recording = { id, button };
+          button.classList.add("recording");
+          button.textContent = "Press keys…";
+          button.focus({ preventScroll: true });
+     }
+     function stopRecording() {
+          if (!recording) return;
+          const { id, button } = recording;
+          recording = null;
+          button.classList.remove("recording");
+          button.innerHTML = keysHtml(hotkeys[id]);
+     }
+     // Gives `id` the key `combo`. If another action had it, that one is left
+     // without a shortcut (and briefly highlighted) so no key does two things.
+     function assignHotkey(id, combo) {
+          recording = null;
+          const other = combo && HOTKEYS.find(h => h.id !== id && hotkeys[h.id] === combo);
+          if (other) hotkeys[other.id] = "";
+          hotkeys[id] = combo;
+          saveHotkeys();
+          renderHotkeys(id);
+          const button = el.hotkeyList.querySelector(`.hk-row[data-id="${id}"] .hk-key`);
+          if (button) button.focus({ preventScroll: true });
+          if (other) {
+               const row = el.hotkeyList.querySelector(`.hk-row[data-id="${other.id}"]`);
+               if (row) replay(row, "bumped");
+               toast(`${comboText(combo)} was used for “${other.label}”, which now has no shortcut.`);
+          }
+     }
+     // While recording, every key press goes here first.
+     window.addEventListener(
+          "keydown",
+          event => {
+               if (!recording) return;
+               event.preventDefault();
+               event.stopPropagation(); // also keeps Esc from closing Settings
+               if (event.key === "Escape" || event.key === "Tab") {
+                    stopRecording();
+                    return;
+               }
+               const combo = comboOf(event);
+               if (!combo) return; // only Shift / Ctrl / … so far: wait for the real key
+               if (combo === "Backspace" || combo === "Delete") assignHotkey(recording.id, "");
+               else assignHotkey(recording.id, combo);
+          },
+          true,
+     );
+     document.addEventListener("pointerdown", event => {
+          if (recording && !recording.button.contains(event.target)) stopRecording();
+     });
+     el.hkResetAll.addEventListener("click", () => {
+          stopRecording();
+          for (const h of HOTKEYS) hotkeys[h.id] = h.key;
+          saveHotkeys();
+          renderHotkeys();
+          replay(el.hotkeyList, "enter");
+          toast("Hotkeys are back to their defaults");
+     });
+     renderHotkeys();
+
+     // Settings › Migrate
+     el.migChoose.addEventListener("click", () => el.folderInput.click());
+     el.folderInput.addEventListener("change", () => {
+          const entries = [...el.folderInput.files].map(file => ({ file, path: file.webkitRelativePath || file.name }));
+          el.folderInput.value = "";
+          if (entries.length) scanFolder(entries);
+     });
+     el.migStart.addEventListener("click", runMigration);
+     el.migStop.addEventListener("click", () => {
+          migrate.stop = true;
+          el.migStop.disabled = true;
+          el.migSummary.textContent = "Stopping after this song…";
+          setTimeout(() => (el.migStop.disabled = false), 400);
+     });
+     el.migShow.addEventListener("click", () => {
+          closeDialog(el.settings);
+          state.view = "library";
+          state.filter = el.search.value = "";
+          renderSidebar();
+          renderView(true);
+          setTimeout(() => el.list.lastElementChild?.scrollIntoView({ block: "nearest", behavior: motionOn() ? "smooth" : "auto" }), 250);
+     });
+
+     // Filters
+     for (const chip of el.filterChips)
+          chip.addEventListener("click", () => openFilterMenu(chip.dataset.filter, chip));
+     el.filterClear.addEventListener("click", () => setFilter("all"));
+     el.noResultsClear.addEventListener("click", () => setFilter("all"));
+
+     // Edit Song Info: type and genres
+     renderTypePick();
+     radioKeys(el.trkType);
+     el.trkGenres.addEventListener("click", event => {
+          if (event.target === el.trkGenres || event.target === el.trkGenreChips) el.trkGenreInput.focus();
+     });
+     el.trkGenreInput.addEventListener("input", () => {
+          if (/[,;]/.test(el.trkGenreInput.value)) addGenre(el.trkGenreInput.value);
+          else renderGenreSuggest();
+     });
+     el.trkGenreInput.addEventListener("keydown", event => {
+          if (event.key === "Enter") {
+               event.preventDefault(); // Enter adds the genre rather than saving
+               addGenre(el.trkGenreInput.value);
+          } else if (event.key === "Backspace" && !el.trkGenreInput.value && trackEdit.genres.length) {
+               const chips = el.trkGenreChips.children;
+               removeGenre(trackEdit.genres[trackEdit.genres.length - 1], chips[chips.length - 1]);
+          }
+     });
+
      el.search.addEventListener("input", () => {
           state.filter = el.search.value;
           renderView();
      });
-     el.addMusic.addEventListener("click", () => el.fileInput.click());
+     el.addMusic.addEventListener("click", () => {
+          if (!desktop) return el.fileInput.click();
+          desktop
+               .pickSongs()
+               .then(files => files.length && addFiles(files, desktop.importFiles))
+               .catch(error => toast(String(error?.message || error), "error"));
+     });
      el.fileInput.addEventListener("change", () => {
           addFiles(el.fileInput.files);
           el.fileInput.value = "";
@@ -3026,27 +4200,22 @@
                return;
           }
           if (document.querySelector("dialog[open]")) return;
-          if (
-               event.target.closest(
-                    "input, textarea, button, [contenteditable]",
-               ) &&
-               !(event.target.type === "range" && event.code === "Space")
-          )
-               return;
-          if (event.ctrlKey || event.metaKey || event.altKey) return;
-          if (event.code === "Space") {
-               event.preventDefault();
-               togglePlay();
-          } else if (event.code === "ArrowRight" && currentTrack())
-               audio.currentTime = Math.min(
-                    audio.currentTime + 5,
-                    audio.duration || Infinity,
-               );
-          else if (event.code === "ArrowLeft" && currentTrack())
-               audio.currentTime = Math.max(audio.currentTime - 5, 0);
+          if (event.target.closest('textarea, [contenteditable], input:not([type="range"]):not([type="checkbox"])'))
+               return; // typing in a box
+          const combo = comboOf(event);
+          if (!combo) return;
+          // Let focused controls keep their own keys: Space / Enter press a button,
+          // the arrow keys move a slider.
+          if (event.target.closest("button, [role=button], li.track") && /^(Space|Enter|NumpadEnter)$/.test(combo)) return;
+          if (event.target.type === "range" && /^(Arrow(Left|Right|Up|Down)|Home|End|PageUp|PageDown)$/.test(combo)) return;
+          const action = actionFor(combo);
+          if (!action) return;
+          event.preventDefault();
+          HOTKEY_ACTIONS[action.id]();
      });
 
      audio.addEventListener("timeupdate", renderProgress);
+     audio.addEventListener("timeupdate", () => keepInsideLoop()); // also when the tab is in the background
      audio.addEventListener("durationchange", renderProgress);
      audio.addEventListener("ended", () => next(true));
      audio.addEventListener("waiting", () => setBuffering(true));
@@ -3070,6 +4239,27 @@
                renderPlayState();
           }
      });
+     // Separate Audio: the instruments follow the vocals.
+     audio.addEventListener("play", syncFollower);
+     audio.addEventListener("pause", () => follower.pause());
+     audio.addEventListener("seeked", syncFollower);
+     audio.addEventListener("waiting", () => follower.pause());
+     audio.addEventListener("playing", syncFollower);
+     audio.addEventListener("timeupdate", syncFollower); // the drift check, a few times a second
+     follower.addEventListener("canplay", syncFollower); // start it as soon as it is able to
+     follower.addEventListener("error", () => {
+          if (state.activeStem === "mix" && follower.getAttribute("src")) audio.dispatchEvent(new Event("error"));
+     });
+     for (const [slider, key] of [
+          [el.mixVocals, "mixVocals"],
+          [el.mixMusic, "mixMusic"],
+     ])
+          slider.addEventListener("input", () => {
+               state[key] = Number(slider.value);
+               applyMix();
+               saveSettings();
+          });
+
      audio.addEventListener("error", () => {
           const track = currentTrack();
           if (!track || !audio.src) return;
@@ -3099,9 +4289,22 @@
 
      // ───────────── start ─────────────
      renderDesign();
+     renderFilters();
      setSidebar(!root.classList.contains("side-hidden"), false);
+     setShowLyrics(lyrics.shown, false);
+     for (const name of Object.keys(PANELS)) {
+          let hidden = false;
+          try {
+               hidden = localStorage.getItem(PANELS[name].key) === "hidden";
+          } catch {
+               /* private mode */
+          }
+          setPanelHidden(name, hidden, false);
+     }
      setTimeout(() => root.classList.add("booted"), 1500);
      applyVolume(true);
+     applyMix(true);
+     renderMixer();
      applyReverbType();
      applyReverb(true);
      applySpeed();

@@ -7,6 +7,8 @@ Run with:  ./run.sh      (or: .venv/bin/python server.py)
 from __future__ import annotations
 
 import argparse
+import hashlib
+import io
 import json
 import os
 import re
@@ -17,6 +19,21 @@ import webbrowser
 from pathlib import Path
 
 from flask import Flask, abort, jsonify, request, send_file
+
+# Pictures (covers, playlist photos) are opened with Pillow, plus pillow-heif for
+# the HEIC / HEIF photos iPhones take. Without them only JPEG, PNG, WebP and GIF work.
+try:
+    from PIL import Image, ImageOps
+
+    Image.MAX_IMAGE_PIXELS = 90_000_000           # refuse absurdly huge images
+    try:
+        from pillow_heif import register_heif_opener
+
+        register_heif_opener()
+    except ImportError:
+        pass
+except ImportError:
+    Image = None
 
 import lyrics
 from separator import STEMS, Separator
@@ -37,12 +54,17 @@ AUDIO_TYPES = {".mp3": "audio/mpeg", ".wav": "audio/wav", ".flac": "audio/flac"}
 COVER_TYPES = {"image/jpeg": ".jpg", "image/jpg": ".jpg", "image/png": ".png",
                "image/webp": ".webp", "image/gif": ".gif"}
 DEFAULT_SETTINGS = {"autoPrepare": True}
-MAX_IMAGE_BYTES = 12 * 1024 * 1024
+MAX_IMAGE_BYTES = 40 * 1024 * 1024
+COVER_SIDE = 1400                                   # covers are stored no larger than this
+TYPES = ("happy", "sad", "quiet", "energetic")     # a song's mood; chosen by the listener
+MAX_GENRES = 15
 
 for folder in (MUSIC_DIR, COVER_DIR, STEMS_DIR):
     folder.mkdir(parents=True, exist_ok=True)
 
-app = Flask(__name__, static_folder=str(BASE_DIR / "static"), static_url_path="/static")
+# The page and its files are served from the root ("/app.js", "/style.css"),
+# the same paths the desktop app uses, so one index.html works for both.
+app = Flask(__name__, static_folder=str(BASE_DIR / "static"), static_url_path="")
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
 
 separator = Separator(STEMS_DIR)
@@ -105,6 +127,8 @@ def public_track(track: dict) -> dict:
         "duration": track["duration"],
         "format": track["ext"].lstrip(".").upper(),
         "hasCover": bool(track.get("cover")),
+        "type": track.get("type") or "",
+        "genres": track.get("genres") or [],
         "coverVersion": track.get("coverVersion", 0),     # changes when the picture does, so browsers refetch it
         "stems": separator.status(track["id"]),
     }
@@ -139,21 +163,60 @@ def _image_extension(data: bytes) -> str | None:
     return None
 
 
-def save_picture(stem: str) -> str:
-    """Store the uploaded picture as covers/<stem>.<ext> and return its file name."""
+def uploaded_picture() -> bytes:
     upload = request.files.get("image")
     if upload is None:
         abort(400, description="No picture was sent.")
     data = upload.read(MAX_IMAGE_BYTES + 1)
     if len(data) > MAX_IMAGE_BYTES:
-        abort(400, description="That picture is too large (the limit is 12 MB).")
-    extension = _image_extension(data)
-    if extension is None:
-        abort(400, description="That file is not a JPEG, PNG, WebP or GIF picture.")
+        abort(400, description="That picture is too large (the limit is 40 MB).")
+    return data
+
+
+def normalise_picture(data: bytes) -> tuple[bytes, str]:
+    """Any picture Pillow can open (JPEG, PNG, HEIC, HEIF, AVIF, WebP, GIF, BMP,
+    TIFF, ICO, …) becomes a JPEG, or a PNG if it has see-through parts: turned
+    the right way up, no larger than COVER_SIDE, and without its hidden details
+    (camera, location and so on). Returns (bytes, extension)."""
+    if Image is None:                                  # no Pillow: accept the common kinds as they are
+        extension = _image_extension(data)
+        if extension is None:
+            abort(400, description="That file is not a JPEG, PNG, WebP or GIF picture.")
+        return data, extension
+    try:
+        with Image.open(io.BytesIO(data)) as opened:
+            picture = ImageOps.exif_transpose(opened)  # first frame only, for animations
+            picture.thumbnail((COVER_SIDE, COVER_SIDE), Image.Resampling.LANCZOS)
+            see_through = picture.mode in ("RGBA", "LA", "PA") or (
+                picture.mode == "P" and "transparency" in picture.info)
+            out = io.BytesIO()
+            if see_through:
+                picture.convert("RGBA").save(out, "PNG", optimize=True)
+                return out.getvalue(), ".png"
+            picture.convert("RGB").save(out, "JPEG", quality=90, optimize=True, progressive=True)
+            return out.getvalue(), ".jpg"
+    except Image.DecompressionBombError:
+        abort(400, description="That picture is too large to open.")
+    except Exception:
+        abort(400, description="That file is not a picture Lewisis' Music can open.")
+
+
+def save_picture(stem: str) -> str:
+    """Store the uploaded picture as covers/<stem>.<ext> and return its file name."""
+    data, extension = normalise_picture(uploaded_picture())
     remove_picture(stem)
     name = f"{stem}{extension}"
     (COVER_DIR / name).write_bytes(data)
     return name
+
+
+@app.post("/api/images/convert")
+def convert_picture():
+    """Turns a picture the browser cannot show (HEIC, TIFF, …) into one it can,
+    so it can be previewed before it is saved."""
+    data, extension = normalise_picture(uploaded_picture())
+    mimetype = "image/png" if extension == ".png" else "image/jpeg"
+    return send_file(io.BytesIO(data), mimetype=mimetype, download_name=f"picture{extension}")
 
 
 def remove_picture(stem: str) -> None:
@@ -162,6 +225,55 @@ def remove_picture(stem: str) -> None:
 
 
 # ---- metadata -------------------------------------------------------------
+
+def clean_genres(values) -> list[str]:
+    """A tidy list of genres: no blanks, no repeats (ignoring case), each one
+    short, and "Pop; Rock" or "Pop/Rock" split into separate genres."""
+    if isinstance(values, str):
+        values = [values]
+    genres, seen = [], set()
+    for value in values or []:
+        for part in re.split(r"[;,/\x00]", str(value or "")):
+            name = " ".join(part.split())[:40]
+            if name and name.casefold() not in seen:
+                seen.add(name.casefold())
+                genres.append(name)
+    return genres[:MAX_GENRES]
+
+
+def read_genres(path: Path) -> list[str]:
+    """Genres stored in the song file's own tags."""
+    try:
+        import mutagen
+
+        audio = mutagen.File(str(path))
+        tags = getattr(audio, "tags", None)
+        if tags is None:
+            return []
+        values = []
+        if hasattr(tags, "getall"):                       # ID3 (MP3, WAV)
+            for frame in tags.getall("TCON"):
+                values.extend(getattr(frame, "genres", None) or frame.text)
+        else:                                             # Vorbis comments (FLAC)
+            for key in ("genre", "GENRE"):
+                found = tags.get(key)
+                if found:
+                    values.extend(found if isinstance(found, list) else [found])
+        return clean_genres(values)
+    except Exception as exc:
+        print(f"[genres] {path.name}: {exc}")
+        return []
+
+
+def fill_in_genres() -> None:
+    """Songs added before genres existed get the genres from their files, once."""
+    with _data_lock:
+        tracks = load_library()
+        missing = [t for t in tracks if "genres" not in t]
+        for track in missing:
+            track["genres"] = read_genres(MUSIC_DIR / track["file"])
+        if missing:
+            save_library(tracks)
 
 def _first_tag(tags, *keys) -> str:
     for key in keys:
@@ -241,9 +353,42 @@ def list_tracks():
     return jsonify([public_track(t) for t in load_library()])
 
 
+def file_hash(path: Path) -> str:
+    """A fingerprint of a song file's contents, to spot the same song twice."""
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def library_hashes() -> set[str]:
+    """Fingerprints of every song in the library (worked out once for older songs)."""
+    missing = {t["id"]: t["file"] for t in load_library() if not t.get("hash")}
+    found = {}
+    for track_id, file in missing.items():           # outside the lock: this reads whole files
+        try:
+            found[track_id] = file_hash(MUSIC_DIR / file)
+        except OSError:
+            pass
+    with _data_lock:
+        tracks = load_library()
+        if found:
+            for track in tracks:
+                if track["id"] in found and not track.get("hash"):
+                    track["hash"] = found[track["id"]]
+            save_library(tracks)
+        return {t["hash"] for t in tracks if t.get("hash")}
+
+
 @app.post("/api/tracks")
 def add_tracks():
-    added, rejected = [], []
+    """Copy uploaded songs into data/music and add them to the library. Nothing
+    already there is removed. With ?skipDuplicates=1 (used by Migrate), songs
+    whose contents are already in the library are skipped."""
+    added, rejected, duplicates = [], [], []
+    skip_duplicates = request.args.get("skipDuplicates") == "1"
+    known = library_hashes() if skip_duplicates else set()
     for upload in request.files.getlist("files"):
         name = Path(upload.filename or "").name
         ext = Path(name).suffix.lower()
@@ -253,6 +398,12 @@ def add_tracks():
         track_id = uuid.uuid4().hex[:12]
         path = MUSIC_DIR / f"{track_id}{ext}"
         upload.save(path)
+        digest = file_hash(path)
+        if skip_duplicates and digest in known:
+            path.unlink(missing_ok=True)
+            duplicates.append(name)
+            continue
+        known.add(digest)
         meta = read_metadata(path, name)
         cover_name = None
         if meta["cover"]:
@@ -266,11 +417,14 @@ def add_tracks():
             "title": meta["title"],
             "artist": meta["artist"],
             "album": meta["album"],
+            "type": "",
+            "genres": read_genres(path),
             "duration": round(meta["duration"], 2),
             "ext": ext,
             "file": path.name,
             "cover": cover_name,
             "added": int(time.time()),
+            "hash": digest,
         }
         with _data_lock:
             tracks = load_library()
@@ -278,7 +432,7 @@ def add_tracks():
             save_library(tracks)
         prepare_in_background([track])
         added.append(public_track(track))
-    return jsonify({"added": added, "rejected": rejected})
+    return jsonify({"added": added, "rejected": rejected, "duplicates": duplicates})
 
 
 @app.delete("/api/tracks/<track_id>")
@@ -312,13 +466,20 @@ def _update_track(track_id: str, change) -> dict:
 
 @app.put("/api/tracks/<track_id>")
 def edit_track(track_id):
-    """Change a song's title, artist or album. Only the library's own record
-    changes; the audio file is left exactly as it is."""
+    """Change a song's title, artist, album, type (mood) or genres. Only the
+    library's own record changes; the audio file is left exactly as it is."""
     body = request.get_json(silent=True) or {}
     fields = {}
     for key in ("title", "artist", "album"):
         if key in body:
             fields[key] = " ".join(str(body[key] or "").split())[:200]
+    if "type" in body:
+        kind = str(body["type"] or "").strip().lower()
+        if kind and kind not in TYPES:
+            abort(400, description="Unknown type. Choose Happy, Sad, Quiet or Energetic.")
+        fields["type"] = kind
+    if "genres" in body:
+        fields["genres"] = clean_genres(body["genres"])
     if "title" in fields and not fields["title"]:
         abort(400, description="A song needs a title.")
     return jsonify(public_track(_update_track(track_id, lambda track: track.update(fields))))
@@ -560,6 +721,7 @@ def main() -> None:
     if not separator.available():
         print("  Note: AI separation packages are missing:",
               ", ".join(separator.missing_modules()), "\n")
+    fill_in_genres()
     prepare_in_background()
     if not args.no_browser:
         threading.Timer(0.8, lambda: webbrowser.open(url)).start()

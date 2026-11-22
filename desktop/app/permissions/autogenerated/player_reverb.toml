@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-player-reverb"
+description = "Enables the player_reverb command without any pre-configured scope."
+commands.allow = ["player_reverb"]
+
+[[permission]]
+identifier = "deny-player-reverb"
+description = "Denies the player_reverb command without any pre-configured scope."
+commands.deny = ["player_reverb"]

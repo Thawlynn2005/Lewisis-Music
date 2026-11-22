@@ -1,0 +1,31 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "What the main window may do: its own player commands, events, file and folder pickers, and logging. No shell, no general file-system access.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "dialog:allow-open",
+    "dialog:allow-ask",
+    "dialog:allow-message",
+    "log:default",
+    "allow-api",
+    "allow-api-upload",
+    "allow-import-files",
+    "allow-migrate-folder",
+    "allow-separation-model",
+    "allow-install-model",
+    "allow-app-info",
+    "allow-player-load",
+    "allow-player-unload",
+    "allow-player-play",
+    "allow-player-pause",
+    "allow-player-seek",
+    "allow-player-volume",
+    "allow-player-layers",
+    "allow-player-speed",
+    "allow-player-reverb",
+    "allow-player-loop",
+    "allow-player-status"
+  ]
+}

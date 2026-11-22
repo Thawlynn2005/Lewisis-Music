@@ -4,6 +4,8 @@
 
 flask>=3.0
 mutagen>=1.47
+pillow>=11          # covers and playlist photos in any format
+pillow-heif>=0.18   # HEIC / HEIF photos (iPhone)
 soundfile>=0.12
 numpy
 torch
