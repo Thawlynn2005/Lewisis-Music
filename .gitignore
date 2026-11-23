@@ -23,3 +23,14 @@ prisma/*.db-journal
 .venv/
 __pycache__/
 data/
+
+# Claude Code (local settings and skills)
+.claude/
+
+# Desktop app build output and the (large, generated) separation model
+desktop/target/
+desktop/app/gen/
+desktop/app/resources/*.onnx
+desktop/app/resources/*.so
+desktop/app/resources/*.dll
+desktop/app/resources/*.dylib

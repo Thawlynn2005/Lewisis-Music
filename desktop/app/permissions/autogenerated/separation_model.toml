@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-separation-model"
+description = "Enables the separation_model command without any pre-configured scope."
+commands.allow = ["separation_model"]
+
+[[permission]]
+identifier = "deny-separation-model"
+description = "Denies the separation_model command without any pre-configured scope."
+commands.deny = ["separation_model"]

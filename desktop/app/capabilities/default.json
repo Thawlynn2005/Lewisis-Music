@@ -1,0 +1,31 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "What the main window may do: its own commands (which open the file and folder pickers themselves, so the page never supplies a file path), events, yes/no dialogs and logging. No shell and no general file-system access.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "dialog:allow-ask",
+    "dialog:allow-message",
+    "log:default",
+    "allow-api",
+    "allow-api-upload",
+    "allow-pick-songs",
+    "allow-pick-folder",
+    "allow-import-files",
+    "allow-separation-model",
+    "allow-install-model",
+    "allow-app-info",
+    "allow-player-load",
+    "allow-player-unload",
+    "allow-player-play",
+    "allow-player-pause",
+    "allow-player-seek",
+    "allow-player-volume",
+    "allow-player-layers",
+    "allow-player-speed",
+    "allow-player-reverb",
+    "allow-player-loop",
+    "allow-player-status"
+  ]
+}

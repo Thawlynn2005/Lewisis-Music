@@ -28,8 +28,8 @@
       root.dataset.accent = /^(red|orange|gold|green|teal|blue|purple|pink)$/.test(accent) ? accent : 'red';
     })();
   </script>
-  <link rel="stylesheet" href="/static/style.css">
-  <link rel="stylesheet" href="/static/ui-styles.css">
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/ui-styles.css">
 </head>
 
 <body>
@@ -126,7 +126,17 @@
             <span id="artist" class="lcd-artist"></span>
             <div class="seek">
               <span id="curTime">0:00</span>
-              <input id="seek" type="range" min="0" max="100" step="0.1" value="0" aria-label="Seek" disabled>
+              <div class="seek-track">
+                <input id="seek" type="range" min="0" max="100" step="0.1" value="0" aria-label="Seek" disabled>
+                <!-- With "Loop: this song", two dots mark the part that repeats (A–B loop). -->
+                <div id="loopRange" class="loop-range" aria-hidden="true">
+                  <span class="loop-band"></span>
+                  <button id="loopA" class="loop-dot" type="button" role="slider" data-end="a"
+                    aria-label="Loop start" tabindex="-1"><span class="loop-tip"></span></button>
+                  <button id="loopB" class="loop-dot" type="button" role="slider" data-end="b"
+                    aria-label="Loop end" tabindex="-1"><span class="loop-tip"></span></button>
+                </div>
+              </div>
               <span id="durTime">0:00</span>
             </div>
           </div>
@@ -141,6 +151,17 @@
         <div class="volume">
           <button id="muteBtn" class="tbtn small" type="button" aria-label="Mute"></button>
           <input id="volume" type="range" min="0" max="100" step="1" value="80" aria-label="Volume">
+        </div>
+        <!-- With Separate Audio on (the ⋯ menu on the lyrics page): one volume for the vocals, one for the music. -->
+        <div id="mixer" class="mixer" role="group" aria-label="Separate volumes" aria-hidden="true">
+          <label class="mix-row" title="Vocals volume">
+            <svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z" /></svg>
+            <input id="mixVocals" type="range" min="0" max="100" step="1" value="100" aria-label="Vocals volume" tabindex="-1">
+          </label>
+          <label class="mix-row" title="Instruments volume">
+            <svg viewBox="0 0 24 24"><path d="M21 3 9 5.5v9.05A3.5 3.5 0 1 0 11 17.5V9.6l8-1.67v5.12A3.5 3.5 0 1 0 21 16.5V3z" /></svg>
+            <input id="mixMusic" type="range" min="0" max="100" step="1" value="100" aria-label="Instruments volume" tabindex="-1">
+          </label>
         </div>
       </header>
 
@@ -180,9 +201,27 @@
           </div>
         </div>
 
+        <!-- Narrow the list down by mood (Type), Genre or Artist. -->
+        <div id="filterBar" class="filter-bar" role="toolbar" aria-label="Filter songs">
+          <span class="filter-title">
+            <svg viewBox="0 0 24 24"><path d="M10 18h4v-2h-4v2zM3 6v2h18V6H3zm3 7h12v-2H6v2z" /></svg>Filter
+          </span>
+          <button class="pill filter-chip" type="button" data-filter="type" aria-haspopup="menu" aria-expanded="false">
+            <span class="fc-label">Type</span><span class="fc-value"></span><svg viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z" /></svg>
+          </button>
+          <button class="pill filter-chip" type="button" data-filter="genre" aria-haspopup="menu" aria-expanded="false">
+            <span class="fc-label">Genre</span><span class="fc-value"></span><svg viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z" /></svg>
+          </button>
+          <button class="pill filter-chip" type="button" data-filter="artist" aria-haspopup="menu" aria-expanded="false">
+            <span class="fc-label">Artist</span><span class="fc-value"></span><svg viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z" /></svg>
+          </button>
+          <button id="filterClear" class="link-btn filter-clear" type="button" hidden>Clear filters</button>
+          <span id="filterCount" class="filter-count" aria-live="polite"></span>
+        </div>
+
         <div id="tableHead" class="table-head" aria-hidden="true">
           <span>#</span><span>Title</span><span class="c-artist">Artist</span><span class="c-album">Album</span><span
-            class="c-time">Time</span><span></span>
+            class="c-type">Type</span><span class="c-genres">Genres</span><span class="c-time">Time</span><span></span>
         </div>
         <ul id="trackList" class="track-list"></ul>
 
@@ -194,7 +233,10 @@
           <p class="empty-title">This playlist is empty</p>
           <p>Press <b>Add or Edit Songs</b> to choose songs from your library.</p>
         </div>
-        <p id="noResults" class="empty" hidden>No songs match your search.</p>
+        <div id="noResults" class="empty" hidden>
+          <p id="noResultsText">No songs match your search.</p>
+          <button id="noResultsClear" class="btn small" type="button" hidden>Clear Filters</button>
+        </div>
       </section>
     </div>
   </div>
@@ -257,6 +299,17 @@
           <input id="trkAlbum" class="field" type="text" maxlength="200" autocomplete="off">
         </div>
       </div>
+      <div class="trk-meta">
+        <span class="field-label" id="trkTypeLabel">Type</span>
+        <div id="trkType" class="type-pick" role="radiogroup" aria-labelledby="trkTypeLabel"></div>
+        <label class="field-label" for="trkGenreInput">Genres</label>
+        <div id="trkGenres" class="field genre-box">
+          <span id="trkGenreChips" class="genre-chips"></span>
+          <input id="trkGenreInput" class="genre-input" type="text" maxlength="40" autocomplete="off"
+            placeholder="Type a genre and press Enter">
+        </div>
+        <div id="trkGenreSuggest" class="genre-suggest" aria-label="Suggested genres"></div>
+      </div>
       <div class="dlg-foot">
         <span id="trkFile"></span>
         <button id="trkCancel" class="btn" type="button">Cancel</button>
@@ -264,7 +317,8 @@
       </div>
     </form>
   </dialog>
-  <input id="imageInput" type="file" hidden accept="image/jpeg,image/png,image/webp,image/gif">
+  <input id="imageInput" type="file" hidden
+    accept="image/*,.heic,.heif,.avif,.jxl,.webp,.tif,.tiff,.bmp,.ico,.jpe,.jfif">
 
   <!-- ───────────── Now playing: lyrics and sound controls (full screen) ───────────── -->
   <section id="nowPlaying" class="np" aria-label="Now playing" hidden>
@@ -277,7 +331,7 @@
         </svg>Back
       </button>
       <button id="lyricsMenuBtn" class="tbtn" type="button" aria-label="Lyrics options" aria-haspopup="menu"
-        aria-expanded="false" title="Lyrics options" hidden>
+        aria-expanded="false" title="Lyrics options">
         <svg viewBox="0 0 24 24">
           <path d="M6 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm12 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm-6 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4z" />
         </svg>
@@ -297,8 +351,21 @@
       </div>
     </div>
 
-    <!-- The player bar moves in here, above the sound controls, while this page is open. -->
+    <!-- The player bar moves into the first row while this page is open. Each row has a
+         button beside its panel that tucks the panel away; the button then waits in the
+         bottom-right corner (npTray) to bring it back. -->
     <div id="npDock" class="np-dock">
+      <div class="np-fold" data-panel="bar">
+        <div id="npBarRow" class="np-row">
+          <button id="foldBar" class="tbtn np-fold-btn" type="button" data-panel="bar" aria-expanded="true"
+            aria-label="Hide player bar" title="Hide player bar">
+            <span class="fold-label">Player</span>
+            <svg viewBox="0 0 24 24"><path d="M18 6.41 16.59 5 12 9.58 7.41 5 6 6.41l6 6z" /><path d="M18 13l-1.41-1.41L12 16.17l-4.59-4.58L6 13l6 6z" /></svg>
+          </button>
+        </div>
+      </div>
+      <div class="np-fold" data-panel="sound">
+        <div id="npSoundRow" class="np-row">
       <footer class="sound" aria-label="Sound controls">
         <div class="control">
           <div class="control-head">
@@ -306,7 +373,7 @@
             <span id="speedVal" class="val">1.00×</span>
           </div>
           <input id="speed" type="range" min="50" max="200" step="1" value="100" aria-label="Playback speed">
-          <div class="pills">
+          <div id="speedPills" class="pills">
             <button class="pill" type="button" data-speed="85">Slowed</button>
             <button class="pill" type="button" data-speed="100">Normal</button>
             <button class="pill" type="button" data-speed="125">Nightcore</button>
@@ -356,7 +423,15 @@
           </div>
         </div>
       </footer>
+          <button id="foldSound" class="tbtn np-fold-btn" type="button" data-panel="sound" aria-expanded="true"
+            aria-label="Hide sound controls" title="Hide sound controls">
+            <span class="fold-label">Sound</span>
+            <svg viewBox="0 0 24 24"><path d="M18 6.41 16.59 5 12 9.58 7.41 5 6 6.41l6 6z" /><path d="M18 13l-1.41-1.41L12 16.17l-4.59-4.58L6 13l6 6z" /></svg>
+          </button>
+        </div>
+      </div>
     </div>
+    <div id="npTray" class="np-tray"></div>
   </section>
 
   <!-- ───────────── Lyrics editor ───────────── -->
@@ -399,6 +474,20 @@
               <path d="M12 3v9.28a4 4 0 1 0 2 3.47V7h4V3h-6zM3 5h6v2H3V5zm0 4h6v2H3V9zm0 4h4v2H3v-2z" />
             </svg>
             <span>Lyrics</span>
+          </button>
+          <button id="tab-migrate" class="side-item set-module" type="button" role="tab" aria-selected="false"
+            aria-controls="panel-migrate" data-module="migrate">
+            <svg viewBox="0 0 24 24">
+              <path d="M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 12H4V8h16v10zM8 13.01l1.41 1.41L11 12.84V17h2v-4.16l1.59 1.59L16 13.01 12.01 9 8 13.01z" />
+            </svg>
+            <span>Migrate</span>
+          </button>
+          <button id="tab-hotkeys" class="side-item set-module" type="button" role="tab" aria-selected="false"
+            aria-controls="panel-hotkeys" data-module="hotkeys">
+            <svg viewBox="0 0 24 24">
+              <path d="M20 5H4c-1.1 0-1.99.9-1.99 2L2 17c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm-9 3h2v2h-2V8zm0 3h2v2h-2v-2zM8 8h2v2H8V8zm0 3h2v2H8v-2zm-1 2H5v-2h2v2zm0-3H5V8h2v2zm9 7H8v-2h8v2zm0-4h-2v-2h2v2zm0-3h-2V8h2v2zm3 3h-2v-2h2v2zm0-3h-2V8h2v2z" />
+            </svg>
+            <span>Hotkeys</span>
           </button>
         </div>
       </aside>
@@ -496,6 +585,66 @@
           </div>
         </div>
 
+        <div id="panel-migrate" class="set-panel" role="tabpanel" aria-labelledby="tab-migrate" data-panel="migrate"
+          hidden>
+          <header class="set-head">
+            <h3>Migrate</h3>
+            <p>Bring a whole folder of music into Lewisis' Music at once.</p>
+          </header>
+          <div class="set-body">
+            <div class="set-group">
+              <div class="set-label">
+                <h4>Choose a folder</h4>
+                <p>Every MP3, WAV and FLAC file in the folder, and in the folders inside it, is copied into your
+                  library (<code>data/music</code>). The songs already there stay, and songs you already have are
+                  skipped. Your original files are not moved or changed.</p>
+              </div>
+              <div class="mig-actions">
+                <button id="migChoose" class="btn primary" type="button">
+                  <svg viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z" /></svg>Choose Folder…
+                </button>
+              </div>
+            </div>
+
+            <div id="migCard" class="set-group mig-card" hidden>
+              <div class="mig-head">
+                <span id="migIcon" class="mig-icon"><svg viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z" /></svg></span>
+                <div class="mig-text">
+                  <h4 id="migFolder"></h4>
+                  <p id="migSummary" aria-live="polite"></p>
+                </div>
+              </div>
+              <div id="migBar" class="bar mig-bar" hidden><span></span></div>
+              <p id="migNow" class="mig-now"></p>
+              <ul id="migIssues" class="mig-issues" hidden></ul>
+              <div class="mig-actions">
+                <button id="migStart" class="btn primary" type="button" hidden></button>
+                <button id="migStop" class="btn" type="button" hidden>Stop</button>
+                <button id="migShow" class="btn" type="button" hidden>Show Songs</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="panel-hotkeys" class="set-panel" role="tabpanel" aria-labelledby="tab-hotkeys" data-panel="hotkeys"
+          hidden>
+          <header class="set-head">
+            <h3>Hotkeys</h3>
+            <p>Keyboard shortcuts for the player. Click a shortcut, then press the keys you want to use instead.</p>
+          </header>
+          <div class="set-body">
+            <div id="hotkeyList" class="hk-list"></div>
+            <div class="set-group set-inline">
+              <div class="set-label">
+                <h4>Reset all hotkeys</h4>
+                <p>Put every shortcut back the way it came. <kbd>Esc</kbd> always closes windows and the lyrics page,
+                  and shortcuts are paused while you type in a box.</p>
+              </div>
+              <button id="hkResetAll" class="btn" type="button">Reset to Defaults</button>
+            </div>
+          </div>
+        </div>
+
         <div id="setEmpty" class="set-empty">
           <svg viewBox="0 0 24 24">
             <path
@@ -508,14 +657,17 @@
   </dialog>
 
   <div id="menu" class="menu" role="menu" hidden></div>
+  <input id="folderInput" type="file" webkitdirectory directory multiple hidden>
   <input id="fileInput" type="file" multiple hidden
     accept=".mp3,.wav,.flac,audio/mpeg,audio/wav,audio/x-wav,audio/flac">
   <div id="dropOverlay" class="drop-overlay" hidden>
     <div class="drop-card">Drop to add to your library</div>
   </div>
   <div id="toasts" class="toasts" role="status" aria-live="polite"></div>
+  <div id="hud" class="hud" role="status" aria-live="polite"></div>
 
-  <script src="/static/app.js"></script>
+  <script src="/desktop.js"></script>
+  <script src="/app.js"></script>
 </body>
 
 </html>

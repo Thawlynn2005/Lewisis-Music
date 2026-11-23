@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-pick-songs"
+description = "Enables the pick_songs command without any pre-configured scope."
+commands.allow = ["pick_songs"]
+
+[[permission]]
+identifier = "deny-pick-songs"
+description = "Denies the pick_songs command without any pre-configured scope."
+commands.deny = ["pick_songs"]
