@@ -9,13 +9,16 @@
 //!
 //! Timed lyrics use the LRC format: "[01:23.45] words", one line per timestamp.
 
+#[cfg(feature = "native")]
 use std::fs;
+#[cfg(feature = "native")]
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "native")]
 use crate::{Error, Result};
 
 /// The longest lyrics that are kept, in characters.
@@ -115,10 +118,12 @@ pub struct Saved {
 }
 
 /// Saved lyrics, one small JSON file per song.
+#[cfg(feature = "native")]
 pub struct LyricsStore {
     folder: PathBuf,
 }
 
+#[cfg(feature = "native")]
 impl LyricsStore {
     pub fn new(folder: impl Into<PathBuf>) -> Result<Self> {
         let folder = folder.into();
@@ -170,6 +175,7 @@ pub struct View {
     pub removed: bool,
 }
 
+#[cfg(feature = "native")]
 pub fn describe(store: &LyricsStore, track_id: &str, audio_path: &Path) -> View {
     let saved = store.load(track_id);
     if let Some(saved) = &saved
@@ -253,8 +259,10 @@ pub fn search_titles(title: &str) -> Vec<String> {
 
 // ---- online lookup ----------------------------------------------------------
 
+#[cfg(feature = "native")]
 const LRCLIB: &str = "https://lrclib.net/api";
 /// Deliberately generic: says nothing about the listener.
+#[cfg(feature = "native")]
 const USER_AGENT: &str = "LocalMusicPlayer/1.0";
 
 /// What an online lookup found.
@@ -267,6 +275,7 @@ pub struct Found {
 /// Search lrclib.net for a song's lyrics. `Ok(None)` means nothing matched;
 /// `Err` means the service could not be reached. Blocking: run it off the
 /// interface thread.
+#[cfg(feature = "native")]
 pub fn lookup(title: &str, artist: &str, duration: f64) -> Result<Option<Found>> {
     let (title, artist) = (title.trim(), artist.trim());
     if title.is_empty() {

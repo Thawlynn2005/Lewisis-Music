@@ -1,0 +1,13 @@
+{
+  "name": "lewisis-music-web",
+  "private": true,
+  "description": "Lewisis' Music as a website (Vercel): the same interface, with each visitor's library kept in their own browser.",
+  "license": "MIT",
+  "scripts": {
+    "build": "node build.mjs",
+    "serve": "node serve.mjs"
+  },
+  "devDependencies": {
+    "onnxruntime-web": "1.31.1"
+  }
+}

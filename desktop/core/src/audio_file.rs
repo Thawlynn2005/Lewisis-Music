@@ -1,16 +1,20 @@
 //! Whole-file audio helpers: decode any supported song to stereo samples,
 //! change its sample rate, and save stereo audio as 16-bit FLAC.
 
+#[cfg(feature = "native")]
 use std::fs::File;
 use std::path::Path;
 
-use symphonia::core::audio::SampleBuffer;
-use symphonia::core::codecs::{CODEC_TYPE_NULL, DecoderOptions};
-use symphonia::core::errors::Error as DecodeError;
-use symphonia::core::formats::FormatOptions;
-use symphonia::core::io::MediaSourceStream;
-use symphonia::core::meta::MetadataOptions;
-use symphonia::core::probe::Hint;
+#[cfg(feature = "native")]
+use symphonia::core::{
+    audio::SampleBuffer,
+    codecs::{CODEC_TYPE_NULL, DecoderOptions},
+    errors::Error as DecodeError,
+    formats::FormatOptions,
+    io::MediaSourceStream,
+    meta::MetadataOptions,
+    probe::Hint,
+};
 
 use crate::{Error, Result};
 
@@ -28,12 +32,14 @@ impl Stereo {
     }
 }
 
+#[cfg(feature = "native")]
 fn decode_error(error: DecodeError) -> Error {
     Error::invalid(format!("This song could not be decoded: {error}"))
 }
 
 /// Decode a whole song. Mono becomes two identical channels; more than two
 /// channels keep the first two (as the Python version did).
+#[cfg(feature = "native")]
 pub fn decode(path: &Path) -> Result<Stereo> {
     let file = File::open(path)?;
     let stream = MediaSourceStream::new(Box::new(file), Default::default());
@@ -92,6 +98,7 @@ pub fn decode(path: &Path) -> Result<Stereo> {
 }
 
 /// Change the sample rate (high-quality FFT resampling).
+#[cfg(feature = "native")]
 pub fn resample(audio: Stereo, rate: u32) -> Result<Stereo> {
     use rubato::audioadapter_buffers::direct::InterleavedSlice;
     use rubato::{Fft, FixedSync, Resampler};
@@ -134,6 +141,15 @@ fn fix_min_block_size(bytes: &mut [u8]) {
 /// Save stereo audio as a 16-bit FLAC file (written to a temporary name first,
 /// then moved into place, so a half-written file is never left behind).
 pub fn write_flac(path: &Path, audio: &Stereo) -> Result<()> {
+    let bytes = encode_flac(audio)?;
+    let part = path.with_extension("flac.part");
+    std::fs::write(&part, &bytes)?;
+    std::fs::rename(&part, path)?;
+    Ok(())
+}
+
+/// Stereo audio as the bytes of a 16-bit FLAC file.
+pub fn encode_flac(audio: &Stereo) -> Result<Vec<u8>> {
     use flacenc::bitsink::ByteSink;
     use flacenc::component::BitRepr;
     use flacenc::error::Verify;
@@ -150,13 +166,10 @@ pub fn write_flac(path: &Path, audio: &Stereo) -> Result<()> {
     stream.write(&mut sink).map_err(|e| Error::invalid(format!("Could not save the FLAC file: {e:?}")))?;
     let mut bytes = sink.as_slice().to_vec();
     fix_min_block_size(&mut bytes);
-    let part = path.with_extension("flac.part");
-    std::fs::write(&part, &bytes)?;
-    std::fs::rename(&part, path)?;
-    Ok(())
+    Ok(bytes)
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "native"))]
 mod tests {
     use super::*;
 

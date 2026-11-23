@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["core", "engine", "app"]
+members = ["core", "engine", "app", "wasm"]
 
 [workspace.package]
 version = "3.0.0"
@@ -12,3 +12,9 @@ license = "MIT"
 codegen-units = 1
 lto = "thin"
 strip = true
+
+# The web version's WebAssembly: small, and with its feature section kept
+# (wasm-bindgen reads it).
+[profile.release.package.lewisis-wasm]
+opt-level = "s"
+strip = false

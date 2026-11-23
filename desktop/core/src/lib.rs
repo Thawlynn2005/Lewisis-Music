@@ -10,13 +10,21 @@ pub mod audio_file;
 pub mod genres;
 pub mod lyrics;
 pub mod metadata;
-pub mod migrate;
 pub mod pictures;
+
+// The desktop app only (the web version keeps its library in the browser).
+#[cfg(feature = "native")]
+pub mod migrate;
+#[cfg(feature = "native")]
 pub mod priority;
+#[cfg(feature = "native")]
 pub mod queue;
+#[cfg(feature = "native")]
 pub mod separate;
+#[cfg(feature = "native")]
 pub mod store;
 
+#[cfg(feature = "native")]
 pub use store::{Playlist, Settings, Store, Track};
 
 /// Errors shown to the listener. The messages are the same ones the Python

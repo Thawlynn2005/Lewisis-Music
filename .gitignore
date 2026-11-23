@@ -34,3 +34,9 @@ desktop/app/resources/*.onnx
 desktop/app/resources/*.so
 desktop/app/resources/*.dll
 desktop/app/resources/*.dylib
+
+# Website (Vercel) build
+web/node_modules/
+web/dist/
+web/.vercel/
+web/.vercel-link/

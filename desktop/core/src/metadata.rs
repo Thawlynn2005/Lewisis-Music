@@ -4,6 +4,7 @@
 use std::path::Path;
 use std::sync::LazyLock;
 
+use lofty::file::TaggedFile;
 use lofty::prelude::*;
 use lofty::tag::Tag;
 use regex::Regex;
@@ -19,14 +20,24 @@ pub struct SongInfo {
     /// The embedded cover picture and its MIME type, if any.
     pub cover: Option<(Vec<u8>, String)>,
     pub genres: Vec<String>,
+    /// Lyrics stored in the file ("" if none); see [`embedded_lyrics`].
+    pub lyrics: String,
 }
 
 static ARTIST_TITLE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(.+?)\s+-\s+(.+)$").unwrap());
 
-fn all_tags(path: &Path) -> Option<(Vec<Tag>, f64)> {
-    let tagged = lofty::read_from_path(path).ok()?;
+fn tags_of(tagged: TaggedFile) -> (Vec<Tag>, f64) {
     let duration = tagged.properties().duration().as_secs_f64();
-    Some((tagged.tags().to_vec(), duration))
+    (tagged.tags().to_vec(), duration)
+}
+
+fn all_tags(path: &Path) -> Option<(Vec<Tag>, f64)> {
+    lofty::read_from_path(path).ok().map(tags_of)
+}
+
+fn all_tags_in(data: &[u8]) -> Option<(Vec<Tag>, f64)> {
+    let probe = lofty::probe::Probe::new(std::io::Cursor::new(data)).guess_file_type().ok()?;
+    probe.read().ok().map(tags_of)
 }
 
 fn first_text(tags: &[Tag], read: impl Fn(&Tag) -> Option<String>) -> String {
@@ -35,11 +46,20 @@ fn first_text(tags: &[Tag], read: impl Fn(&Tag) -> Option<String>) -> String {
         .unwrap_or_default()
 }
 
-/// Title / artist / album / length / cover / genres, with the file name as a
-/// fallback for the title ("Artist - Title.mp3").
+/// Title / artist / album / length / cover / genres / lyrics, with the file
+/// name as a fallback for the title ("Artist - Title.mp3").
 pub fn read(path: &Path, original_name: &str) -> SongInfo {
+    info_from(all_tags(path), original_name)
+}
+
+/// The same as [`read`], for a song held in memory (the web version).
+pub fn read_bytes(data: &[u8], original_name: &str) -> SongInfo {
+    info_from(all_tags_in(data), original_name)
+}
+
+fn info_from(found: Option<(Vec<Tag>, f64)>, original_name: &str) -> SongInfo {
     let mut info = SongInfo::default();
-    if let Some((tags, duration)) = all_tags(path) {
+    if let Some((tags, duration)) = found {
         info.duration = duration;
         info.title = first_text(&tags, |t| t.title().map(|s| s.into_owned()));
         info.artist = first_text(&tags, |t| {
@@ -53,6 +73,7 @@ pub fn read(path: &Path, original_name: &str) -> SongInfo {
             })
         });
         info.genres = crate::genres::clean(tags.iter().flat_map(|t| t.get_strings(ItemKey::Genre)));
+        info.lyrics = lyrics_in(&tags);
     }
 
     if info.title.is_empty() {
@@ -82,7 +103,10 @@ pub fn genres(path: &Path) -> Vec<String> {
 /// Lyrics stored in the song file ("" if there are none). When the file holds
 /// more than one version, a timed (LRC) one is preferred.
 pub fn embedded_lyrics(path: &Path) -> String {
-    let Some((tags, _)) = all_tags(path) else { return String::new() };
+    all_tags(path).map(|(tags, _)| lyrics_in(&tags)).unwrap_or_default()
+}
+
+fn lyrics_in(tags: &[Tag]) -> String {
     let texts: Vec<String> = tags
         .iter()
         .flat_map(|tag| {

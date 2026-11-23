@@ -1,3 +1,4 @@
+#![cfg(feature = "native")]
 //! Runs the real separation model through the ONNX Runtime library that the
 //! app ships, loaded at run time.
 //!
