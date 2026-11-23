@@ -2124,6 +2124,27 @@
                return `translate(${dx}px, ${dy}px) scale(${scale}) ${base}`.trim();
           };
           const parts = [$(".np-top"), $(".np-meta"), $(".np-lyrics-wrap"), $('.np-fold[data-panel="sound"]'), el.foldBar, el.npTray];
+          // A backdrop blur ("glass") only blurs what is behind it while no box
+          // around it is see-through: fading a box that holds glass would switch
+          // the blur off until the fade ends. So a box slides as one, but its fade
+          // goes onto the glass panels themselves and the parts between them.
+          // Any theme, any colour: whatever has a blur is found as it is drawn.
+          const isGlass = node => {
+               const style = getComputedStyle(node);
+               return [style.backdropFilter, style.webkitBackdropFilter].some(value => value && value !== "none");
+          };
+          const fadeTargets = node => {
+               if (node === bar) return { targets: [], glass: true }; // the player bar glides; it never fades
+               if (node.hidden || isGlass(node) || node === el.list) return { targets: [node], glass: !node.hidden && isGlass(node) };
+               const inner = [...node.children].map(fadeTargets);
+               if (!inner.some(part => part.glass)) return { targets: [node], glass: false };
+               return { targets: inner.flatMap(part => part.targets), glass: true };
+          };
+          const slide = (node, transform, fade, options) => {
+               if (!node || node.hidden) return;
+               run(node, transform, options);
+               for (const target of fadeTargets(node).targets) run(target, fade, options);
+          };
 
           // Where things end up, measured before anything starts moving.
           const barTo = bar.getBoundingClientRect();
@@ -2140,18 +2161,18 @@
           );
           if (open) {
                // The library sinks back, the page rises, the little cover grows into the big one.
-               run(app, [{}, { opacity: 0, transform: "scale(0.95)" }], { duration: 400, easing: ease });
+               slide(app, [{}, { transform: "scale(0.95)" }], [{}, { opacity: 0 }], { duration: 400, easing: ease });
                run(el.npBackdrop, [{ opacity: 0 }, {}], { duration: 550, easing: "ease" });
                parts.forEach((part, index) =>
-                    run(part, [{ opacity: 0, transform: "translateY(7%)" }, {}], { duration: 550, delay: Math.min(index, 3) * 45, easing: ease }),
+                    slide(part, [{ transform: "translateY(7%)" }, {}], [{ opacity: 0 }, {}], { duration: 550, delay: Math.min(index, 3) * 45, easing: ease }),
                );
                const base = getComputedStyle(el.npArt).transform;
                run(el.npArt, [{ transform: fromBox(artFrom, artHere, base === "none" ? "" : base) }, {}], { duration: 550, easing: ease });
           } else {
                // The page sinks away, the library comes back, the big cover shrinks into the little one.
-               run(app, [{ opacity: 0, transform: "scale(0.95)" }, {}], { duration: 500, easing: ease });
+               slide(app, [{ transform: "scale(0.95)" }, {}], [{ opacity: 0 }, {}], { duration: 500, easing: ease });
                run(el.npBackdrop, [{}, { opacity: 0 }], { duration: 360, easing: "ease" });
-               parts.forEach(part => run(part, [{}, { opacity: 0, transform: "translateY(7%)" }], { duration: 360, easing: "ease" }));
+               parts.forEach(part => slide(part, [{}, { transform: "translateY(7%)" }], [{}, { opacity: 0 }], { duration: 360, easing: "ease" }));
                const base = getComputedStyle(el.npArt).transform;
                const own = base === "none" ? "" : base;
                const end = fromBox(coverTo, artHere, own); // into the little cover in the player bar
