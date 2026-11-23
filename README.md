@@ -113,6 +113,37 @@ Windows and macOS installers are built on GitHub's own Windows and macOS machine
 git tag v3.0.0 && git push origin v3.0.0
 ```
 
+## Website (Vercel)
+
+The same player also runs as a website, for people who don't want to install anything. Each visitor's library — songs, covers, playlists, lyrics, separated vocals and instruments — is kept **in their own browser** on their own device; nothing is uploaded, there are no accounts, and the site itself is just static files.
+
+How it works (`web/`):
+
+- `src/sw.js` is a service worker: it answers the interface's `/api/...` requests (the same ones the Python server and the desktop app answer, with the same replies) from the browser's own storage (`src/store.js`, IndexedDB). `static/app.js` is the same file as everywhere else.
+- Song details, embedded covers and lyrics, cover pictures, the lyrics format and genres are read by the desktop app's Rust code (`desktop/core`), compiled to WebAssembly (`desktop/wasm`).
+- **AI separation** runs in the visitor's browser (`src/separate-worker.js`) with ONNX Runtime Web — on the graphics card (WebGPU) where available, otherwise on the processor — using the same model and the same splitting as the desktop app (they match to within 68 dB). The model (about 160 MB) is downloaded the first time a visitor uses Acapella, Karaoke or Separate Audio, then kept by the browser. *Prepare ahead* starts off on the website.
+- Browsers keep a site's data until the visitor clears it; the site asks the browser to keep it permanently. A library lives in one browser on one device.
+
+Build it (needs Rust with `rustup target add wasm32-unknown-unknown`, `cargo install wasm-bindgen-cli --version 0.2.130`, and Node.js):
+
+```bash
+cd web && npm ci && MODEL_URL=https://huggingface.co/<you>/<repo>/resolve/main/htdemucs.onnx node build.mjs
+```
+
+Try it locally (the same headers as on Vercel; the model is served from `desktop/app/resources/` when no `MODEL_URL` is given):
+
+```bash
+cd web && node serve.mjs
+```
+
+Then open <http://localhost:5070>.
+
+**Deploy.** The separation model is too big for a Vercel deployment (100 MB limit on the free plan), so it is hosted on [Hugging Face](https://huggingface.co) (free, and it lets browsers download it): create a model repository there, upload `desktop/app/resources/htdemucs.onnx` (see *Develop* above for how to make it), and build with its `resolve/main/htdemucs.onnx` address as `MODEL_URL`. Then, logged in to Vercel (`npx vercel login`):
+
+```bash
+cd web/dist && npx vercel deploy --prod
+```
+
 ## Lyrics and sound controls
 
 Click the player bar at the top (or the corner-arrows button in its display) to open the full-screen page. It shows the song's lyrics next to its cover, with the player bar and the Speed, Reverb and Vocals & music controls underneath. *Back* (or `Esc`) returns to your library. Click any timed line to jump to that part of the song.
@@ -163,3 +194,5 @@ The web version keeps everything in `data/` next to this file (the desktop app u
   - `app/` — the Tauri app: the commands the interface calls, sound output (CPAL), the `media:` protocol for covers, `tauri.conf.json` and the permissions in `capabilities/`
   - `tools/export_demucs_onnx.py` — turns the Demucs model into `htdemucs.onnx`
 - `.github/workflows/desktop-build.yml` — builds the installers for all three systems
+- `desktop/wasm/` — the parts of the core the website runs in the browser (WebAssembly)
+- `web/` — the website: `src/` (service worker, browser storage, in-browser separation), `build.mjs` (makes `web/dist`), `serve.mjs` (local preview)

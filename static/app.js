@@ -1966,12 +1966,15 @@
           } else if (stems.state === "running") {
                const separating =
                     stems.stage === "separating" || stems.stage === "saving";
+               const downloading = stems.stage === "downloading"; // the website, the first time
                const percent = Math.round((stems.progress || 0) * 100);
-               el.stemBar.classList.toggle("indeterminate", !separating);
+               el.stemBar.classList.toggle("indeterminate", !separating && !downloading);
                el.stemBar.firstElementChild.style.width = `${percent}%`;
                text = separating
                     ? `Separating vocals from music… ${percent}%`
-                    : "Starting the AI…";
+                    : downloading
+                      ? `Downloading the AI model (first time only)… ${percent}%`
+                      : "Starting the AI…";
                if (waiting) text += " It will switch over by itself.";
           } else if (stems.state === "error") {
                text = stems.error || "Separation failed.";
@@ -4476,5 +4479,8 @@
      renderView();
      renderNowPlaying();
      [el.seek, el.volume, el.speed, el.reverb].forEach(fill);
-     loadEverything();
+     // The website version first starts its in-browser library (web/src/browser.js).
+     Promise.resolve(window.LewisisReady)
+          .then(loadEverything)
+          .catch(error => toast(String(error?.message || error), "error"));
 })();
