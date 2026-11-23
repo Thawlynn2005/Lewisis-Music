@@ -127,7 +127,7 @@ Press *Settings* at the bottom of the sidebar, then *Customization*. Every choic
 
 ## Library and playlists
 
-**Migrate a folder.** *Settings › Migrate › Choose Folder…* picks a folder; every MP3, WAV and FLAC file in it (and in the folders inside it) is copied into `data/music` and added to your library, in folder order. Songs already in the library stay, songs whose contents you already have are skipped, and your original files are not moved or changed. Your browser may ask you to confirm sharing the folder's files with the page.
+**Migrate a folder.** *Settings › Migrate › Choose Folder…* picks a folder; every MP3, WAV and FLAC file in it (and in the folders inside it) is copied into `data/music` and added to your library, in folder order. Songs already in the library stay, songs whose contents you already have are skipped, and your original files are not moved or changed. Your browser may ask you to confirm sharing the folder's files with the page; the desktop app opens your system's own folder picker.
 
 **Songs** is the general library: press *Add Music* or drop files anywhere in the window. Press *New Playlist* in the sidebar to name a playlist and tick the songs that belong in it. A song's `⋯` menu adds it to a playlist, removes it from the one you are viewing, or deletes it from the library.
 

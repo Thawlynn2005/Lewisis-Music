@@ -11,7 +11,7 @@ use lewisis_core::lyrics::{self, LyricsStore};
 use lewisis_core::queue::Queue;
 use lewisis_core::separate::{self, Separator};
 use lewisis_core::store::{Added, PlaylistEdit, TrackEdit};
-use lewisis_core::{Error as CoreError, Store, Track, migrate, pictures};
+use lewisis_core::{Error as CoreError, Store, Track, pictures};
 use serde::Serialize;
 use serde_json::{Value, json};
 
@@ -338,13 +338,6 @@ impl Backend {
             ["api", "playlists", id, "cover"] => Ok(self.store.set_playlist_cover(id, &picture)?.public()),
             _ => Err(ApiError::new(404, format!("Unknown request: POST {path}"))),
         }
-    }
-
-    /// Migrate: every song under a folder, copied in, duplicates skipped.
-    pub fn migrate(&self, folder: &Path, progress: impl FnMut(usize, usize, &str) -> bool) -> ApiResult {
-        let summary = migrate::migrate(&self.store, folder, progress)?;
-        self.prepare_in_background(None);
-        Ok(serde_json::to_value(summary).unwrap_or(Value::Null))
     }
 
     /// The files to play for a song: the original, one stem, or both stems

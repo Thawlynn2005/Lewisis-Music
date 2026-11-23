@@ -178,6 +178,8 @@ impl Queue {
     }
 
     fn work(&self) {
+        // Separating is heavy and never urgent for the interface or the music.
+        crate::priority::lower_current_thread();
         loop {
             let (track_id, source) = {
                 let mut state = self.state();

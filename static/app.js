@@ -782,6 +782,11 @@
           const transition = document.startViewTransition(change);
           transition.ready.catch(() => {});
           transition.finished.catch(() => {});
+          if (desktop) {
+               // A new look restyles the hidden lyrics page too: lay it out again while idle.
+               clearTimeout(restyle.prewarm);
+               restyle.prewarm = setTimeout(prewarmNowPlaying, 900);
+          }
      }
      // Marks one option of a radio group as chosen and makes it the tab stop.
      function markChoice(group, isChosen) {
@@ -1764,6 +1769,11 @@
      // ───────────── rendering: player ─────────────
      function renderNowPlaying() {
           const track = currentTrack();
+          if (desktop && track && track.id !== prewarmedTrack) {
+               prewarmedTrack = track.id; // the lyrics page shows a new cover: lay it out while idle
+               clearTimeout(restyle.prewarm);
+               restyle.prewarm = setTimeout(prewarmNowPlaying, 1200);
+          }
           el.title.textContent = track ? track.title : "Not Playing";
           el.artist.textContent = track
                ? [track.artist, track.album].filter(Boolean).join(" — ")
@@ -2034,6 +2044,10 @@
                settle();
                return;
           }
+          if (desktop?.webkit) {
+               liveNowPlaying(open, apply, settle);
+               return;
+          }
           const move = ++np.moves;
           root.classList.add("vt-np");
           root.classList.toggle("vt-np-close", !open);
@@ -2046,6 +2060,115 @@
                          root.classList.remove("vt-np", "vt-np-close");
                });
           transition.updateCallbackDone.then(settle, () => {});
+     }
+
+     // The same opening and closing, animated live, for WebKit (the desktop app on
+     // Linux and macOS). WebKit's view transitions show still pictures: the page's
+     // blurs and its fading-in panels would only appear once the move is over.
+     // Here every part is animated where it really is, so blurs, the cover and
+     // the lyrics show throughout. Timings match the view transition above.
+     // The desktop app lays the Settings window and the lyrics page out once,
+     // unseen, while idle (after starting, a new look, or a new song), so the
+     // first time each opens is as quick as every time after.
+     function prewarmSettings() {
+          if (el.settings.open) return;
+          const style = el.settings.style;
+          style.display = "block";
+          style.visibility = "hidden";
+          style.pointerEvents = "none";
+          el.settings.getBoundingClientRect();
+          requestAnimationFrame(() =>
+               requestAnimationFrame(() => {
+                    style.display = style.visibility = style.pointerEvents = "";
+               }),
+          );
+     }
+     let prewarmedTrack = null;
+     function prewarmNowPlaying() {
+          if (np.open || !el.np.hidden) return;
+          renderNowPlayingPage();
+          el.np.style.visibility = "hidden";
+          el.np.hidden = false;
+          el.np.getBoundingClientRect();
+          requestAnimationFrame(() =>
+               requestAnimationFrame(() => {
+                    el.np.style.visibility = "";
+                    if (!np.open) el.np.hidden = true;
+               }),
+          );
+     }
+
+     let npAnimations = [];
+     function liveNowPlaying(open, apply, settle) {
+          const move = ++np.moves;
+          const ease = getComputedStyle(root).getPropertyValue("--ease").trim() || "ease";
+          const bar = el.playerbar;
+          const app = $(".app");
+          // Measured before anything changes (mid-way, if a move is cut short).
+          const barFrom = bar.getBoundingClientRect();
+          const artFrom = (open ? el.cover : el.npArt).getBoundingClientRect();
+          npAnimations.forEach(animation => animation.cancel());
+          npAnimations = [];
+          root.classList.add("np-live");
+          apply();
+          el.np.hidden = false; // closing: the page stays drawn while it leaves
+          el.np.classList.remove("enter"); // its CSS entrance is replaced by the moves below
+          const run = (node, keyframes, options) => {
+               if (node && !node.hidden) npAnimations.push(node.animate(keyframes, { fill: "both", ...options }));
+          };
+          // Where a box must start so that it looks like `from` while it really is at `to`.
+          const fromBox = (from, to, base) => {
+               const scale = to.width ? from.width / to.width : 1;
+               const dx = from.left + from.width / 2 - (to.left + to.width / 2);
+               const dy = from.top + from.height / 2 - (to.top + to.height / 2);
+               return `translate(${dx}px, ${dy}px) scale(${scale}) ${base}`.trim();
+          };
+          const parts = [$(".np-top"), $(".np-meta"), $(".np-lyrics-wrap"), $('.np-fold[data-panel="sound"]'), el.foldBar, el.npTray];
+
+          // Where things end up, measured before anything starts moving.
+          const barTo = bar.getBoundingClientRect();
+          const coverTo = el.cover.getBoundingClientRect();
+          const artHere = el.npArt.getBoundingClientRect();
+          // The player bar glides between its two places.
+          run(
+               bar,
+               [
+                    { transform: `translate(${barFrom.left - barTo.left}px, ${barFrom.top - barTo.top}px)`, width: `${barFrom.width}px` },
+                    { transform: "none", width: `${barTo.width}px` },
+               ],
+               { duration: 550, easing: ease },
+          );
+          if (open) {
+               // The library sinks back, the page rises, the little cover grows into the big one.
+               run(app, [{}, { opacity: 0, transform: "scale(0.95)" }], { duration: 400, easing: ease });
+               run(el.npBackdrop, [{ opacity: 0 }, {}], { duration: 550, easing: "ease" });
+               parts.forEach((part, index) =>
+                    run(part, [{ opacity: 0, transform: "translateY(7%)" }, {}], { duration: 550, delay: Math.min(index, 3) * 45, easing: ease }),
+               );
+               const base = getComputedStyle(el.npArt).transform;
+               run(el.npArt, [{ transform: fromBox(artFrom, artHere, base === "none" ? "" : base) }, {}], { duration: 550, easing: ease });
+          } else {
+               // The page sinks away, the library comes back, the big cover shrinks into the little one.
+               run(app, [{ opacity: 0, transform: "scale(0.95)" }, {}], { duration: 500, easing: ease });
+               run(el.npBackdrop, [{}, { opacity: 0 }], { duration: 360, easing: "ease" });
+               parts.forEach(part => run(part, [{}, { opacity: 0, transform: "translateY(7%)" }], { duration: 360, easing: "ease" }));
+               const base = getComputedStyle(el.npArt).transform;
+               const own = base === "none" ? "" : base;
+               const end = fromBox(coverTo, artHere, own); // into the little cover in the player bar
+               run(
+                    el.npArt,
+                    [{ transform: fromBox(artFrom, artHere, own) }, { transform: end, opacity: 1, offset: 0.85 }, { transform: end, opacity: 0 }],
+                    { duration: 550, easing: ease },
+               );
+          }
+          settle();
+          setTimeout(() => {
+               if (move !== np.moves) return; // a newer move took over
+               npAnimations.forEach(animation => animation.cancel());
+               npAnimations = [];
+               root.classList.remove("np-live");
+               el.np.hidden = !np.open;
+          }, 580);
      }
 
      // ───────────── lyrics ─────────────
@@ -3169,6 +3292,11 @@
           renderSidebar();
           renderView(true);
           renderNowPlaying();
+          if (desktop)
+               setTimeout(() => {
+                    prewarmSettings();
+                    prewarmNowPlaying();
+               }, 800);
           if (tracks.some(isBusy)) schedulePoll();
      }
 
@@ -3226,10 +3354,15 @@
                if (migrate.stop) break;
                el.migSummary.textContent = `Copying ${done + 1} of ${songs.length}…`;
                el.migNow.textContent = path;
-               const form = new FormData();
-               form.append("files", file, file.name);
-               const result = await api("/api/tracks?skipDuplicates=1", { method: "POST", body: form }).catch(() => ({
-                    error: "Could not reach the player.",
+               let request;
+               if (desktop) request = desktop.importFiles([file], true); // a file picked in the system's folder picker
+               else {
+                    const form = new FormData();
+                    form.append("files", file, file.name);
+                    request = api("/api/tracks?skipDuplicates=1", { method: "POST", body: form });
+               }
+               const result = await request.catch(error => ({
+                    error: error?.error || "Could not reach the player.",
                }));
                if (result.error || result.rejected?.length) failed.push(path);
                duplicates += result.duplicates?.length || 0;
@@ -4102,7 +4235,15 @@
      renderHotkeys();
 
      // Settings › Migrate
-     el.migChoose.addEventListener("click", () => el.folderInput.click());
+     el.migChoose.addEventListener("click", () => {
+          if (!desktop) return el.folderInput.click();
+          // The desktop app opens the system's folder picker (the browser-style
+          // folder input picks single files on some systems).
+          desktop
+               .pickFolder()
+               .then(entries => entries && scanFolder(entries))
+               .catch(error => toast(String(error?.error || error?.message || error), "error"));
+     });
      el.folderInput.addEventListener("change", () => {
           const entries = [...el.folderInput.files].map(file => ({ file, path: file.webkitRelativePath || file.name }));
           el.folderInput.value = "";

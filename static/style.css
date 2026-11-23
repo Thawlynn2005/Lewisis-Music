@@ -1221,6 +1221,20 @@ body.is-buffering .tbtn.play::before { opacity: 1; transition-delay: 0.25s; anim
 @keyframes np-page-in { from { opacity: 0; transform: translateY(7%); } }
 @keyframes np-page-out { to { opacity: 0; transform: translateY(7%); } }
 .np.fallback-in { animation: np-page-in 0.45s var(--ease) both; }
+
+/* The desktop app on Linux and macOS draws with WebKit, whose view transitions
+   take still pictures that leave out backdrop blurs. So there, an open dialog
+   blurs the page itself rather than what is behind its backdrop (that blur is
+   part of the picture, so it stays put while a new look sweeps in), and the
+   lyrics page opens with live animations instead (see setNowPlaying). */
+:root.webkit-view .dialog::backdrop, :root.webkit-view .dialog.settings::backdrop { -webkit-backdrop-filter: none; backdrop-filter: none; }
+:root.webkit-view :is(.app, .np) { transition: filter 0.22s ease; }
+:root.webkit-view.dialog-open :is(.app, .np) { filter: blur(4px); }
+:root.webkit-view.settings-open :is(.app, .np) { filter: blur(16px) saturate(130%); }
+:root.no-motion.webkit-view :is(.app, .np) { transition: none; }
+/* While the lyrics page opens or closes live, the library stays drawn underneath. */
+:root.np-live .app { visibility: visible; }
+:root.np-live .np { pointer-events: none; }
 /* Once the app has opened, panels no longer replay their entrance when they move. */
 :root.booted .playerbar { animation: none; }
 

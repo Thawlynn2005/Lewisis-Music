@@ -19,32 +19,42 @@ pub struct Summary {
     pub failed: usize,
 }
 
-fn is_song(path: &Path) -> bool {
+/// Whether a file is a song the library takes (MP3, WAV or FLAC).
+pub fn is_song(path: &Path) -> bool {
     path.extension()
         .map(|e| format!(".{}", e.to_string_lossy().to_lowercase()))
         .is_some_and(|ext| AUDIO_EXTENSIONS.contains(&ext.as_str()))
 }
 
-/// Every song file under `folder`, in name order. Hidden folders are skipped,
-/// and folder links are not followed (so a link loop can't trap it).
-pub fn find_songs(folder: &Path) -> Vec<PathBuf> {
-    let mut songs = Vec::new();
+/// Every file under `folder` (and the folders inside it), in name order,
+/// leaving out hidden files and folders (names starting with "."), as a
+/// browser does when a folder is chosen. Folder links are not followed, so a
+/// link loop can't trap it.
+pub fn visible_files(folder: &Path) -> Vec<PathBuf> {
+    let mut files = Vec::new();
     let mut pending = vec![folder.to_path_buf()];
     while let Some(dir) = pending.pop() {
         let Ok(entries) = std::fs::read_dir(&dir) else { continue };
         for entry in entries.flatten() {
+            if entry.file_name().to_string_lossy().starts_with('.') {
+                continue;
+            }
             let path = entry.path();
-            let hidden = entry.file_name().to_string_lossy().starts_with('.');
             let Ok(kind) = entry.file_type() else { continue };
-            if kind.is_dir() && !hidden {
+            if kind.is_dir() {
                 pending.push(path);
-            } else if (kind.is_file() || kind.is_symlink()) && path.is_file() && is_song(&path) {
-                songs.push(path);
+            } else if (kind.is_file() || kind.is_symlink()) && path.is_file() {
+                files.push(path);
             }
         }
     }
-    songs.sort_by_key(|p| p.to_string_lossy().to_lowercase());
-    songs
+    files.sort_by_key(|p| p.to_string_lossy().to_lowercase());
+    files
+}
+
+/// Every song file under `folder`, in name order (see [`visible_files`]).
+pub fn find_songs(folder: &Path) -> Vec<PathBuf> {
+    visible_files(folder).into_iter().filter(|p| is_song(p)).collect()
 }
 
 /// Copy every song under `folder` into the library. `progress` is told

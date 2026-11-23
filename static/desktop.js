@@ -23,7 +23,25 @@
      }
      const { invoke } = tauri.core;
      const dialog = tauri.dialog;
+     // Linux and macOS draw the window with WebKit; Windows uses Chromium
+     // (WebView2), like the browsers the web version is made for. A few
+     // effects are done differently on WebKit (see app.js and style.css).
+     const webkit = /AppleWebKit/.test(navigator.userAgent) && !/Chrome\/|Chromium|Edg\//.test(navigator.userAgent);
      document.documentElement.classList.add("desktop-app");
+     if (webkit) {
+          document.documentElement.classList.add("webkit-view");
+          // style.css blurs the page itself while a dialog is open (WebKit leaves
+          // backdrop blurs out of its view-transition pictures). These two
+          // classes say when; a watcher is much cheaper here than :has().
+          const dialogs = [...document.querySelectorAll("dialog.dialog")];
+          const mark = () => {
+               const open = dialogs.filter(d => d.open && !d.classList.contains("closing"));
+               document.documentElement.classList.toggle("dialog-open", open.length > 0);
+               document.documentElement.classList.toggle("settings-open", open.some(d => d.classList.contains("settings")));
+          };
+          const watcher = new MutationObserver(mark);
+          dialogs.forEach(d => watcher.observe(d, { attributes: true, attributeFilter: ["open", "class"] }));
+     }
 
      // ───────────── diagnostics ─────────────
      // Interface errors go to the app's log file as well as the console.
@@ -111,14 +129,8 @@
                          { title: "Install separation model", kind: "info", okLabel: "Choose File…", cancelLabel: "Not Now" },
                     );
                     if (!choose) return false;
-                    const path = await dialog.open({
-                         multiple: false,
-                         directory: false,
-                         filters: [{ name: "Separation model", extensions: ["onnx"] }],
-                    });
-                    if (!path) return false;
-                    await invoke("install_model", { path });
-                    return true;
+                    // Rust opens the file picker itself and checks the model loads.
+                    return !!(await invoke("install_model"));
                } catch (error) {
                     await dialog.message(error?.error || String(error), { title: "Install separation model", kind: "error" });
                     return false;
@@ -135,18 +147,20 @@
      const MEDIA = /Windows/.test(navigator.userAgent) ? "http://media.localhost/" : "media://localhost/";
      const coverUrl = (kind, id, version) => `${MEDIA}${kind}/${encodeURIComponent(id)}?v=${version || 0}`;
 
-     // ───────────── "Add music" ─────────────
-     async function pickSongs() {
-          const picked = await dialog.open({
-               multiple: true,
-               directory: false,
-               title: "Add Music",
-               filters: [{ name: "Songs", extensions: ["mp3", "wav", "flac", "MP3", "WAV", "FLAC"] }],
-          });
-          const paths = picked == null ? [] : Array.isArray(picked) ? picked : [picked];
-          return paths.map(path => ({ path, name: path.split(/[\\/]/).pop() }));
+     // ───────────── "Add Music" and Migrate ─────────────
+     // The system's own file and folder pickers, opened by Rust; only what is
+     // picked there can be imported.
+     const pickSongs = () => invoke("pick_songs"); // [{ path, name }]
+     // Settings › Migrate: the chosen folder's files as the web version's
+     // folder input gives them, [{ file: { name, path }, path: "Folder/sub/song.mp3" }],
+     // or null if cancelled.
+     async function pickFolder() {
+          const folder = await invoke("pick_folder");
+          if (!folder) return null;
+          return folder.files.map(({ path, rel }) => ({ file: { name: rel.split("/").pop(), path }, path: rel }));
      }
-     const importFiles = files => invoke("import_files", { paths: files.map(f => f.path), skipDuplicates: false });
+     const importFiles = (files, skipDuplicates = false) =>
+          invoke("import_files", { paths: files.map(f => f.path), skipDuplicates });
 
      // ───────────── the player ─────────────
      // Behaves like the parts of HTMLAudioElement that app.js uses: src,
@@ -404,7 +418,9 @@
           player,
           coverUrl,
           pickSongs,
+          pickFolder,
           importFiles,
+          webkit,
      };
      window.LewisisDesktop = desktop;
 

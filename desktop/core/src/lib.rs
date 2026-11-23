@@ -12,6 +12,7 @@ pub mod lyrics;
 pub mod metadata;
 pub mod migrate;
 pub mod pictures;
+pub mod priority;
 pub mod queue;
 pub mod separate;
 pub mod store;

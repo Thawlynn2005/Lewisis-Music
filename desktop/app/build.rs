@@ -3,8 +3,9 @@
 const COMMANDS: &[&str] = &[
     "api",
     "api_upload",
+    "pick_songs",
+    "pick_folder",
     "import_files",
-    "migrate_folder",
     "separation_model",
     "install_model",
     "app_info",

@@ -30,6 +30,9 @@ use tauri::{AppHandle, Emitter, Manager, State};
 struct App {
     backend: Arc<Backend>,
     player: Player,
+    /// Files picked in the native pickers this session: the only ones
+    /// `import_files` will read.
+    picked: Arc<std::sync::Mutex<std::collections::HashSet<PathBuf>>>,
 }
 
 /// Run blocking work off the interface thread.
@@ -85,9 +88,107 @@ async fn api_upload(request: Request<'_>, app: State<'_, App>) -> Result<Respons
     .await?
 }
 
-/// Add songs chosen in the native file picker (copied, never moved).
+// ---- native pickers ----------------------------------------------------------
+// The file and folder pickers are opened here, not by the interface, and only
+// files picked in them can be imported: the interface never hands Rust a path.
+
+fn picker(handle: &AppHandle) -> tauri_plugin_dialog::FileDialogBuilder<tauri::Wry> {
+    use tauri_plugin_dialog::DialogExt;
+    let dialog = handle.dialog().file();
+    match handle.get_webview_window("main") {
+        Some(window) => dialog.set_parent(&window),
+        None => dialog,
+    }
+}
+
+fn picked_path(file: tauri_plugin_dialog::FilePath) -> Option<PathBuf> {
+    file.into_path().ok()
+}
+
+/// Development only: LEWISIS_TEST_PICK answers the pickers with these paths
+/// (separated like PATH), so the automated window tests can get past them.
+fn test_pick() -> Option<Vec<PathBuf>> {
+    if !cfg!(debug_assertions) {
+        return None;
+    }
+    std::env::var_os("LEWISIS_TEST_PICK").map(|paths| std::env::split_paths(&paths).collect())
+}
+
+/// "Add Music": the system's file picker, for songs. Returns what was picked
+/// (nothing if cancelled); `import_files` then adds them.
+#[tauri::command]
+async fn pick_songs(app: State<'_, App>, handle: AppHandle) -> Result<Vec<Value>, ApiError> {
+    let picked = app.picked.clone();
+    blocking(move || {
+        let paths: Vec<PathBuf> = match test_pick() {
+            Some(paths) => paths,
+            None => picker(&handle)
+                .set_title("Add Music")
+                .add_filter("Songs (MP3, WAV, FLAC)", &["mp3", "wav", "flac", "MP3", "WAV", "FLAC"])
+                .blocking_pick_files()
+                .unwrap_or_default()
+                .into_iter()
+                .filter_map(picked_path)
+                .collect(),
+        };
+        picked.lock().unwrap_or_else(|p| p.into_inner()).extend(paths.iter().cloned());
+        paths
+            .iter()
+            .map(|path| {
+                let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                serde_json::json!({"path": path, "name": name})
+            })
+            .collect()
+    })
+    .await
+}
+
+/// Settings › Migrate: the system's folder picker. Returns the folder's name
+/// and every visible file in it and its subfolders, each with its path
+/// relative to the folder's parent (like a browser's `webkitRelativePath`), or
+/// `null` if cancelled. The songs among them may then be imported.
+#[tauri::command]
+async fn pick_folder(app: State<'_, App>, handle: AppHandle) -> Result<Option<Value>, ApiError> {
+    let picked = app.picked.clone();
+    blocking(move || {
+        let chosen = match test_pick() {
+            Some(paths) => paths.into_iter().next(),
+            None => picker(&handle).set_title("Choose a Folder to Migrate").blocking_pick_folder().and_then(picked_path),
+        };
+        let folder = chosen?;
+        let name = folder.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| folder.display().to_string());
+        let files = lewisis_core::migrate::visible_files(&folder);
+        log::info!("Migrate: {} files in {}", files.len(), folder.display());
+        let mut allowed = picked.lock().unwrap_or_else(|p| p.into_inner());
+        let entries: Vec<Value> = files
+            .iter()
+            .map(|path| {
+                if lewisis_core::migrate::is_song(path) {
+                    allowed.insert(path.clone());
+                }
+                let inside = path.strip_prefix(&folder).unwrap_or(path);
+                let relative: Vec<String> =
+                    std::iter::once(name.clone()).chain(inside.components().map(|c| c.as_os_str().to_string_lossy().into_owned())).collect();
+                serde_json::json!({"path": path, "rel": relative.join("/")})
+            })
+            .collect();
+        Some(serde_json::json!({"name": name, "files": entries}))
+    })
+    .await
+}
+
+/// Add songs picked with `pick_songs` or `pick_folder` (copied, never moved).
+/// With `skip_duplicates`, songs whose contents are already in the library
+/// are left out (Migrate).
 #[tauri::command]
 async fn import_files(paths: Vec<PathBuf>, skip_duplicates: bool, app: State<'_, App>) -> Result<Value, ApiError> {
+    {
+        let allowed = app.picked.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some(path) = paths.iter().find(|p| !allowed.contains(*p)) {
+            log::warn!("Refused to import a file that wasn't picked: {}", path.display());
+            return Err(ApiError::new(403, "Only songs chosen in the file or folder picker can be added."));
+        }
+    }
     let backend = app.backend.clone();
     blocking(move || {
         let files: Vec<(PathBuf, String)> = paths
@@ -102,20 +203,6 @@ async fn import_files(paths: Vec<PathBuf>, skip_duplicates: bool, app: State<'_,
     .await?
 }
 
-/// Settings → Migrate: copy in every song under a folder. Progress arrives as
-/// `migrate-progress` events.
-#[tauri::command]
-async fn migrate_folder(folder: PathBuf, app: State<'_, App>, handle: AppHandle) -> Result<Value, ApiError> {
-    let backend = app.backend.clone();
-    blocking(move || {
-        backend.migrate(&folder, |done, total, name| {
-            let _ = handle.emit("migrate-progress", serde_json::json!({"done": done, "total": total, "name": name}));
-            true
-        })
-    })
-    .await?
-}
-
 /// Whether the separation model is installed, and where.
 #[tauri::command]
 fn separation_model(app: State<'_, App>) -> Option<PathBuf> {
@@ -125,9 +212,17 @@ fn separation_model(app: State<'_, App>) -> Option<PathBuf> {
 /// Copy a separation model file (made with `tools/export_demucs_onnx.py`)
 /// into the app's data folder, after checking that it loads.
 #[tauri::command]
-async fn install_model(path: PathBuf, app: State<'_, App>) -> Result<PathBuf, ApiError> {
+async fn install_model(app: State<'_, App>, handle: AppHandle) -> Result<Option<PathBuf>, ApiError> {
     let backend = app.backend.clone();
     blocking(move || {
+        let Some(path) = picker(&handle)
+            .set_title("Choose the Separation Model (htdemucs.onnx)")
+            .add_filter("Separation model", &["onnx"])
+            .blocking_pick_file()
+            .and_then(picked_path)
+        else {
+            return Ok(None);
+        };
         let runtime = backend.runtime().ok_or_else(|| ApiError::new(503, "This installation is missing ONNX Runtime, so the model can't be checked. Reinstall Lewisis' Music."))?;
         lewisis_core::separate::Separator::load(&path, &runtime)
             .map_err(|e| ApiError::new(400, format!("That isn't a model Lewisis' Music can use: {e}")))?;
@@ -140,7 +235,7 @@ async fn install_model(path: PathBuf, app: State<'_, App>) -> Result<PathBuf, Ap
         std::fs::rename(&part, &target).map_err(|e| ApiError::new(500, e.to_string()))?;
         log::info!("Installed the separation model at {}", target.display());
         backend.prepare_in_background(None);
-        Ok(target)
+        Ok(Some(target))
     })
     .await?
 }
@@ -305,6 +400,26 @@ fn percent_decode(text: &str) -> String {
 
 // ---- start-up ----------------------------------------------------------------
 
+/// Linux: how WebKitGTK draws the page (logged, and settable for testing with
+/// LEWISIS_WEBKIT_ACCELERATION=always|on-demand|never).
+#[cfg(target_os = "linux")]
+fn tune_webkitgtk(window: &tauri::WebviewWindow) {
+    let _ = window.with_webview(|webview| {
+        use webkit2gtk::{HardwareAccelerationPolicy, SettingsExt, WebViewExt};
+        let Some(settings) = WebViewExt::settings(&webview.inner()) else { return };
+        let wanted = match std::env::var("LEWISIS_WEBKIT_ACCELERATION").as_deref() {
+            Ok("always") => Some(HardwareAccelerationPolicy::Always),
+            Ok("on-demand") => Some(HardwareAccelerationPolicy::OnDemand),
+            Ok("never") => Some(HardwareAccelerationPolicy::Never),
+            _ => None,
+        };
+        if let Some(policy) = wanted {
+            settings.set_hardware_acceleration_policy(policy);
+        }
+        log::info!("WebKitGTK hardware acceleration: {:?}", settings.hardware_acceleration_policy());
+    });
+}
+
 fn data_folder(handle: &AppHandle) -> Result<PathBuf, String> {
     if let Some(folder) = std::env::var_os("LEWISIS_MUSIC_DATA") {
         return Ok(PathBuf::from(folder));
@@ -336,6 +451,10 @@ pub fn run() {
             let data = data_folder(&handle)?;
             let resources = handle.path().resource_dir().ok();
             log::info!("Lewisis' Music {} starting; data in {}", handle.package_info().version, data.display());
+            #[cfg(target_os = "linux")]
+            if let Some(window) = app.get_webview_window("main") {
+                tune_webkitgtk(&window);
+            }
             let backend = Backend::open(&data, resources.as_deref())
                 .map_err(|e| format!("Could not open the music library in {}: {e}", data.display()))?;
             match backend.model() {
@@ -350,7 +469,7 @@ pub fn run() {
             std::thread::spawn(move || prepare.prepare_in_background(None));
             let player = Player::start();
             report_playback(handle.clone(), player.clone());
-            app.manage(App { backend, player });
+            app.manage(App { backend, player, picked: Arc::default() });
             Ok(())
         })
         .on_page_load(|webview, payload| {
@@ -374,8 +493,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             api,
             api_upload,
+            pick_songs,
+            pick_folder,
             import_files,
-            migrate_folder,
             separation_model,
             install_model,
             app_info,

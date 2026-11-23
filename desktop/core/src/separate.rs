@@ -39,6 +39,28 @@ pub const RUNTIME_LIBRARY: &str = if cfg!(target_os = "windows") {
     "libonnxruntime.so"
 };
 
+/// Creates ONNX Runtime's worker threads at low priority (see [`crate::priority`]).
+struct LowPriorityThreads;
+
+impl ort::environment::ThreadManager for LowPriorityThreads {
+    type Thread = std::thread::JoinHandle<()>;
+
+    fn create(&self, work: impl FnOnce() + Send + 'static) -> ort::Result<Self::Thread> {
+        std::thread::Builder::new()
+            .name("separation".into())
+            .spawn(move || {
+                crate::priority::lower_current_thread();
+                work();
+            })
+            .map_err(|e| ort::Error::new(format!("could not start a separation thread: {e}")))
+    }
+
+    fn join(thread: Self::Thread) -> ort::Result<()> {
+        let _ = thread.join();
+        Ok(())
+    }
+}
+
 /// The two halves of a song.
 pub struct Stems {
     pub vocals: Stereo,
@@ -67,7 +89,15 @@ impl Separator {
             .map_err(model_error)?
             .with_optimization_level(GraphOptimizationLevel::Level3)
             .map_err(model_error)?
-            .with_intra_threads(threads)
+            // Leave a core for the interface and the music, run the model's
+            // threads at low priority, and don't let idle ones spin.
+            .with_intra_threads(threads.saturating_sub(1).max(1))
+            .map_err(model_error)?
+            .with_inter_threads(1)
+            .map_err(model_error)?
+            .with_intra_op_spinning(false)
+            .map_err(model_error)?
+            .with_thread_manager(LowPriorityThreads)
             .map_err(model_error)?
             .commit_from_file(model)
             .map_err(model_error)?;
