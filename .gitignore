@@ -39,3 +39,4 @@ desktop/app/resources/*.dylib
 web/node_modules/
 web/dist/
 web/.vercel/
+web/.vercel-link/

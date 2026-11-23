@@ -144,6 +144,12 @@ Then open <http://localhost:5070>.
 cd web/dist && npx vercel deploy --prod
 ```
 
+The site is live at <https://lewisis-music.vercel.app>, with the model at `Lewisis2005/lewisis-music-model` on Hugging Face. To publish a new version, rebuild and deploy again (the build keeps the Vercel project link in `web/dist/.vercel`):
+
+```bash
+cd web && MODEL_URL=https://huggingface.co/Lewisis2005/lewisis-music-model/resolve/main/htdemucs.onnx node build.mjs && cd dist && npx vercel deploy --prod
+```
+
 ## Lyrics and sound controls
 
 Click the player bar at the top (or the corner-arrows button in its display) to open the full-screen page. It shows the song's lyrics next to its cover, with the player bar and the Speed, Reverb and Vocals & music controls underneath. *Back* (or `Esc`) returns to your library. Click any timed line to jump to that part of the song.

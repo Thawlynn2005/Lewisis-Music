@@ -27,8 +27,24 @@ const run = (command, args, cwd) => execFileSync(command, args, { cwd, stdio: "i
 console.log("• Compiling the shared Rust code to WebAssembly");
 run("cargo", ["build", "-p", "lewisis-wasm", "--release", "--target", "wasm32-unknown-unknown", "--locked"], desktop);
 
+// Keep the Vercel project link (dist/.vercel) across builds; everything else is rebuilt.
+const link = join(here, ".vercel-link");
+rmSync(link, { recursive: true, force: true });
+try {
+     cpSync(join(dist, ".vercel"), link, { recursive: true });
+} catch {
+     /* not linked yet */
+}
 rmSync(dist, { recursive: true, force: true });
 mkdirSync(dist, { recursive: true });
+try {
+     cpSync(link, join(dist, ".vercel"), { recursive: true });
+     rmSync(link, { recursive: true, force: true });
+} catch {
+     /* not linked yet */
+}
+// Never upload local environment files (`vercel link` writes a token to .env.local).
+writeFileSync(join(dist, ".vercelignore"), ".env*\n.gitignore\n");
 const built = join(desktop, "target/wasm32-unknown-unknown/release/lewisis_wasm.wasm");
 // Folders named after their contents, so browsers can keep them for good and
 // a new version always comes with new names (never old WebAssembly with new glue).
